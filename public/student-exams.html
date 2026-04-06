@@ -110,15 +110,30 @@
       loadHistory();
     })();
 
-    // Get the latest slot end datetime for an exam
-    function getLastDeadline(slots) {
-      if (!slots || slots.length === 0) return null;
-      let latest = null;
-      for (const s of slots) {
-        const dt = new Date(`${s.slot_date}T${s.end_time}`);
-        if (!latest || dt > latest) latest = dt;
-      }
-      return latest;
+    // (deadline check now done inline per-slot)
+
+    // Parse slot_date (could be ISO string or date string)
+    function parseSlotDate(d) {
+      if (!d) return '';
+      const dt = new Date(d);
+      // Format as YYYY-MM-DD in IST
+      return dt.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // en-CA gives YYYY-MM-DD
+    }
+
+    // Parse slot time (could be "HH:MM:SS" or "HH:MM")
+    function parseSlotTime(t) {
+      if (!t) return '';
+      return String(t).slice(0, 5);
+    }
+
+    // Build slot end as a proper Date in IST
+    function slotEndDate(slotDate, endTime) {
+      const dateStr = parseSlotDate(slotDate);
+      const timeStr = parseSlotTime(endTime);
+      // Create date in local time (server is IST, browser should match)
+      const parts = dateStr.split('-');
+      const timeParts = timeStr.split(':');
+      return new Date(parts[0], parts[1] - 1, parts[2], timeParts[0], timeParts[1], 0);
     }
 
     async function loadExams() {
@@ -130,7 +145,7 @@
         const submitted = exams.filter(e => e.submitted > 0).length;
 
         document.getElementById('studentStats').innerHTML = `
-          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Total Exams</div></div>
+          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Today's Exams</div></div>
           <div class="student-stat"><div class="val" style="color:var(--green)">${submitted}</div><div class="lbl">Submitted</div></div>
           <div class="student-stat"><div class="val" style="color:var(--red)">${assigned - submitted}</div><div class="lbl">Pending</div></div>
         `;
@@ -143,26 +158,32 @@
 
         container.innerHTML = exams.map(e => {
           const now = new Date();
-          const deadline = getLastDeadline(e.slots);
-          const isExpired = deadline ? deadline <= now : false;
-          const allExpired = isExpired;
 
-          // Build slot list with per-slot countdown
+          // Build slot list
           const slotListHTML = (e.slots || []).map(s => {
-            const slotEnd = new Date(`${s.slot_date}T${s.end_time}`);
+            const date = parseSlotDate(s.slot_date);
+            const start = parseSlotTime(s.start_time);
+            const end = parseSlotTime(s.end_time);
+            const slotEnd = slotEndDate(s.slot_date, s.end_time);
             const diff = slotEnd - now;
             const expired = diff <= 0;
             const urgent = diff > 0 && diff < 24 * 60 * 60 * 1000;
 
             return `<div class="slot-item">
               <span class="room">${esc(s.room)}</span>
-              <span>${s.slot_date}</span>
-              <span class="time">${s.start_time.slice(0,5)} – ${s.end_time.slice(0,5)}</span>
-              <span class="countdown ${expired ? 'expired' : urgent ? 'urgent' : 'normal'}" data-end="${s.slot_date}T${s.end_time}">
+              <span>${date}</span>
+              <span class="time">${start} – ${end}</span>
+              <span class="countdown ${expired ? 'expired' : urgent ? 'urgent' : 'normal'}" data-end="${date}T${end}:00">
                 ${expired ? 'Ended' : formatCountdown(diff)}
               </span>
             </div>`;
           }).join('') || '<div style="color:var(--text-muted);font-size:12px">No schedule yet</div>';
+
+          // Check if any slot is still open
+          const anySlotOpen = (e.slots || []).some(s => {
+            return slotEndDate(s.slot_date, s.end_time) > now;
+          });
+          const allExpired = !anySlotOpen;
 
           let statusBadge, actionBtns;
           const canSubmit = e.status === 'active' && !allExpired;
@@ -217,7 +238,9 @@
 
     function updateCountdowns() {
       document.querySelectorAll('.countdown[data-end]').forEach(el => {
-        const end = new Date(el.dataset.end);
+        // data-end is "YYYY-MM-DDThh:mm:00" local time
+        const parts = el.dataset.end.split(/[T:-]/);
+        const end = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], 0);
         const diff = end - new Date();
         if (diff <= 0) {
           el.textContent = 'Ended';

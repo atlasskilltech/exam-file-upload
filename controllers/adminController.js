@@ -71,6 +71,81 @@ exports.addUser = async (req, res) => {
   }
 };
 
+// POST /admin/users/upload — bulk upload students via CSV
+// CSV format: name,app_id (one per line, with or without header)
+exports.bulkUploadStudents = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
+    }
+
+    const csvText = req.file.buffer.toString('utf-8');
+    const lines = csvText.split(/\r?\n/).filter(l => l.trim());
+
+    if (lines.length === 0) {
+      return res.status(400).json({ success: false, message: 'CSV file is empty' });
+    }
+
+    // Skip header if it looks like one
+    let startIdx = 0;
+    const firstLine = lines[0].toLowerCase();
+    if (firstLine.includes('name') || firstLine.includes('app_id') || firstLine.includes('app id')) {
+      startIdx = 1;
+    }
+
+    let added = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const parts = lines[i].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+      const name = parts[0];
+      const appId = parts[1];
+
+      if (!name || !appId) {
+        errors.push(`Row ${i + 1}: missing name or app_id`);
+        skipped++;
+        continue;
+      }
+
+      // Check duplicate app_id
+      const [existingAppId] = await pool.execute('SELECT id FROM users WHERE app_id = ?', [appId]);
+      if (existingAppId.length > 0) {
+        errors.push(`Row ${i + 1}: App ID "${appId}" already exists`);
+        skipped++;
+        continue;
+      }
+
+      // Check duplicate username
+      const [existingName] = await pool.execute('SELECT id FROM users WHERE username = ?', [name]);
+      if (existingName.length > 0) {
+        errors.push(`Row ${i + 1}: Name "${name}" already exists`);
+        skipped++;
+        continue;
+      }
+
+      await pool.execute(
+        "INSERT INTO users (username, password, app_id, role) VALUES (?, NULL, ?, 'student')",
+        [name, appId]
+      );
+      added++;
+    }
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [req.session.user.id, 'bulk uploaded students', `${added} added, ${skipped} skipped`]
+    );
+
+    return res.json({
+      success: true,
+      data: { added, skipped, errors: errors.slice(0, 20) }
+    });
+  } catch (err) {
+    console.error('Bulk upload error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process CSV' });
+  }
+};
+
 // DELETE /admin/users/:id
 exports.deleteUser = async (req, res) => {
   try {
