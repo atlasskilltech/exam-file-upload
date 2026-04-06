@@ -422,11 +422,12 @@ exports.examStats = async (req, res) => {
 // STUDENT ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams/student/list — all exams with slots visible to students
+// GET /exams/student/list — only today's exams visible to students
 exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
+    // Only show exams that have at least one slot today
     const [exams] = await pool.execute(`
       SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
@@ -434,13 +435,15 @@ exports.studentExamList = async (req, res) => {
         (SELECT sub.original_name FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_file,
         (SELECT sub.submitted_at FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_date
       FROM exams e
+      WHERE e.status = 'active'
+        AND EXISTS (SELECT 1 FROM exam_slots s WHERE s.exam_id = e.id AND s.slot_date = CURDATE())
       ORDER BY e.created_at DESC
     `, [userId, userId, userId, userId]);
 
-    // Fetch slots for each exam
+    // Fetch only today's slots for each exam
     for (const exam of exams) {
       const [slots] = await pool.execute(
-        'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+        'SELECT * FROM exam_slots WHERE exam_id = ? AND slot_date = CURDATE() ORDER BY start_time',
         [exam.id]
       );
       exam.slots = slots;

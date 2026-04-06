@@ -36,8 +36,8 @@
   <div class="app-layout" id="app">
     <main class="main-content">
       <div class="page-header">
-        <h1>My Exams</h1>
-        <p>View exams and submit your answers.</p>
+        <h1>Today's Exams</h1>
+        <p>Exams scheduled for today. Submit your answers before the slot ends.</p>
       </div>
 
       <div class="student-stats" id="studentStats"></div>
@@ -137,7 +137,7 @@
 
         const container = document.getElementById('examCards');
         if (exams.length === 0) {
-          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams available yet.</p></div>';
+          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams scheduled for today.</p></div>';
           return;
         }
 
