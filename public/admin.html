@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Admin Panel</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Admin Panel</h1>
+        <p>Manage users and view system activity.</p>
+      </div>
+
+      <!-- Add user form -->
+      <div class="card">
+        <div class="card-header">Add New User</div>
+        <form id="addUserForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:150px;margin-bottom:0">
+            <label>Username</label>
+            <input type="text" class="form-control" id="newUsername" required>
+          </div>
+          <div class="form-group" style="flex:1;min-width:150px;margin-bottom:0">
+            <label>Password</label>
+            <input type="password" class="form-control" id="newPassword" required>
+          </div>
+          <div class="form-group" style="min-width:120px;margin-bottom:0">
+            <label>Role</label>
+            <select class="form-control" id="newRole">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">Add User</button>
+        </form>
+      </div>
+
+      <!-- Users table -->
+      <div class="card">
+        <div class="card-header">All Users</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable">
+              <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Activity log -->
+      <div class="card">
+        <div class="card-header">Activity Log</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="logsTable">
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let currentUser;
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+
+      // Admin-only page
+      if (user.role !== 'admin') {
+        window.location.href = '/dashboard.html';
+        return;
+      }
+
+      currentUser = user;
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      loadUsers();
+      loadLogs();
+    })();
+
+    // Add user
+    document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value;
+      const role = document.getElementById('newRole').value;
+
+      if (!username || !password) return;
+
+      try {
+        await apiFetch('/admin/users/add', {
+          method: 'POST',
+          body: JSON.stringify({ username, password, role })
+        });
+        showToast('User added successfully');
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newPassword').value = '';
+        loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    async function loadUsers() {
+      try {
+        const res = await apiFetch('/admin/users');
+        const tbody = document.getElementById('usersTable');
+
+        tbody.innerHTML = res.data.map(u => `
+          <tr>
+            <td>${u.id}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td><span class="badge badge-${u.role}">${u.role}</span></td>
+            <td>${formatDate(u.created_at)}</td>
+            <td>
+              ${u.id === currentUser.id
+                ? '<span style="color:var(--text-muted);font-size:12px">Current user</span>'
+                : `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escapeAttr(u.username)}')">Delete</button>`
+              }
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showToast('Failed to load users', 'error');
+      }
+    }
+
+    async function loadLogs() {
+      try {
+        const res = await apiFetch('/admin/logs');
+        const tbody = document.getElementById('logsTable');
+
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity yet</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(l => `
+            <tr>
+              <td>${escapeHtml(l.username || 'Unknown')}</td>
+              <td>${escapeHtml(l.action)}</td>
+              <td>${escapeHtml(l.target || '—')}</td>
+              <td>${formatDate(l.created_at)}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Failed to load logs', 'error');
+      }
+    }
+
+    async function deleteUser(id, username) {
+      const confirmed = await showConfirm(`Delete user "${username}"? This cannot be undone.`);
+      if (!confirmed) return;
+
+      try {
+        await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
+        showToast('User deleted');
+        loadUsers();
+        loadLogs();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

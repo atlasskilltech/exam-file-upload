@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Reports</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <!-- Chart.js CDN (works offline if cached, graceful fallback) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Reports & Analytics</h1>
+        <p>System-wide file statistics and activity overview.</p>
+      </div>
+
+      <!-- Stats overview -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="statTotal">--</div>
+          <div class="stat-label">Total Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statMonth">--</div>
+          <div class="stat-label">This Month</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statStorage">--</div>
+          <div class="stat-label">Total Storage</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-header">Files by Type</div>
+          <div class="chart-container">
+            <canvas id="typeChart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Top Uploaders</div>
+          <div class="chart-container">
+            <canvas id="uploaderChart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Files by Category</div>
+          <div class="chart-container">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent activity -->
+      <div class="card" style="margin-top:24px">
+        <div class="card-header">Recent Activity</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="activityTable">
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const chartColors = ['#e8ff47', '#47ffd4', '#ff4757', '#3498db', '#9b59b6', '#f39c12', '#1abc9c', '#e74c3c'];
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+
+      if (user.role !== 'admin') {
+        window.location.href = '/dashboard.html';
+        return;
+      }
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      try {
+        const res = await apiFetch('/admin/reports');
+        const d = res.data;
+
+        // Stats
+        document.getElementById('statTotal').textContent = d.totalFiles;
+        document.getElementById('statMonth').textContent = d.monthFiles;
+        document.getElementById('statStorage').textContent = formatSize(d.totalStorage);
+
+        // Check if Chart.js is loaded
+        if (typeof Chart !== 'undefined') {
+          // Files by type — doughnut
+          if (d.byType.length > 0) {
+            new Chart(document.getElementById('typeChart'), {
+              type: 'doughnut',
+              data: {
+                labels: d.byType.map(t => t.type_group),
+                datasets: [{
+                  data: d.byType.map(t => t.count),
+                  backgroundColor: chartColors.slice(0, d.byType.length),
+                  borderColor: '#161616',
+                  borderWidth: 2
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'bottom', labels: { color: '#e0e0e0', font: { family: 'DM Mono' } } }
+                }
+              }
+            });
+          }
+
+          // Top uploaders — bar chart
+          if (d.topUploaders.length > 0) {
+            new Chart(document.getElementById('uploaderChart'), {
+              type: 'bar',
+              data: {
+                labels: d.topUploaders.map(u => u.username),
+                datasets: [{
+                  label: 'Files',
+                  data: d.topUploaders.map(u => u.count),
+                  backgroundColor: '#e8ff47',
+                  borderRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                  x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } },
+                  y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true }
+                },
+                plugins: {
+                  legend: { display: false }
+                }
+              }
+            });
+          }
+
+          // By category — bar chart
+          if (d.byCategory.length > 0) {
+            new Chart(document.getElementById('categoryChart'), {
+              type: 'bar',
+              data: {
+                labels: d.byCategory.map(c => c.category),
+                datasets: [{
+                  label: 'Files',
+                  data: d.byCategory.map(c => c.count),
+                  backgroundColor: '#47ffd4',
+                  borderRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                scales: {
+                  x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true },
+                  y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } }
+                },
+                plugins: {
+                  legend: { display: false }
+                }
+              }
+            });
+          }
+        } else {
+          // Chart.js not available (offline without cache)
+          document.querySelectorAll('.chart-container').forEach(el => {
+            el.innerHTML = '<div class="empty-state">Charts require Chart.js (load page while online once to cache)</div>';
+          });
+        }
+
+        // Recent activity table
+        const actBody = document.getElementById('activityTable');
+        if (d.recentActivity.length === 0) {
+          actBody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity yet</td></tr>';
+        } else {
+          actBody.innerHTML = d.recentActivity.map(a => `
+            <tr>
+              <td>${escapeHtml(a.username || 'Unknown')}</td>
+              <td>${escapeHtml(a.action)}</td>
+              <td>${escapeHtml(a.target || '—')}</td>
+              <td>${formatDate(a.created_at)}</td>
+            </tr>
+          `).join('');
+        }
+
+      } catch (err) {
+        showToast('Failed to load reports', 'error');
+        console.error(err);
+      }
+    })();
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

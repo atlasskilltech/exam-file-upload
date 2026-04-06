@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Upload Files</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Upload Files</h1>
+        <p>Drag and drop files or click to browse. Max 500 MB per file.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Select Files</div>
+
+        <div class="form-group">
+          <label>Category (optional)</label>
+          <select class="form-control" id="categorySelect">
+            <option value="">No category</option>
+          </select>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+          <div class="upload-icon">+</div>
+          <div class="upload-text">Drop files here or <span>browse</span></div>
+          <input type="file" id="fileInput" multiple style="display:none">
+        </div>
+
+        <div class="progress-bar" id="progressBar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-text" id="progressText"></div>
+
+        <div style="margin-top:16px">
+          <button class="btn btn-primary" id="uploadBtn" disabled>Upload Files</button>
+          <span id="fileCount" style="margin-left:12px;color:var(--text-muted);font-size:13px"></span>
+        </div>
+      </div>
+
+      <div class="card" id="resultsCard" style="display:none">
+        <div class="card-header">Upload Results</div>
+        <ul class="file-list" id="resultsList"></ul>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let selectedFiles = [];
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      // Load categories for dropdown
+      try {
+        const catRes = await apiFetch('/categories');
+        const select = document.getElementById('categorySelect');
+        catRes.data.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat.id;
+          opt.textContent = cat.name;
+          select.appendChild(opt);
+        });
+      } catch {}
+    })();
+
+    // Upload area interactions
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', () => {
+      handleFiles(fileInput.files);
+    });
+
+    function handleFiles(files) {
+      selectedFiles = Array.from(files);
+      const count = document.getElementById('fileCount');
+      const btn = document.getElementById('uploadBtn');
+
+      if (selectedFiles.length > 0) {
+        count.textContent = `${selectedFiles.length} file(s) selected (${formatSize(selectedFiles.reduce((a, f) => a + f.size, 0))})`;
+        btn.disabled = false;
+      } else {
+        count.textContent = '';
+        btn.disabled = true;
+      }
+    }
+
+    // Upload handler
+    document.getElementById('uploadBtn').addEventListener('click', () => {
+      if (selectedFiles.length === 0) return;
+
+      const btn = document.getElementById('uploadBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+
+      const formData = new FormData();
+      selectedFiles.forEach(f => formData.append('files', f));
+
+      const categoryId = document.getElementById('categorySelect').value;
+      if (categoryId) formData.append('category_id', categoryId);
+
+      const xhr = new XMLHttpRequest();
+
+      // Progress tracking
+      const progressBar = document.getElementById('progressBar');
+      const progressFill = document.getElementById('progressFill');
+      const progressText = document.getElementById('progressText');
+      progressBar.classList.add('active');
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          progressFill.style.width = pct + '%';
+          progressText.textContent = `${pct}% — ${formatSize(e.loaded)} / ${formatSize(e.total)}`;
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        btn.disabled = false;
+        btn.textContent = 'Upload Files';
+
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            showToast(`${data.data.length} file(s) uploaded successfully!`);
+
+            // Show results
+            const resultsCard = document.getElementById('resultsCard');
+            const resultsList = document.getElementById('resultsList');
+            resultsCard.style.display = 'block';
+            resultsList.innerHTML = data.data.map(f => `
+              <li>
+                <span>${escapeHtml(f.original_name)}</span>
+                <span class="file-size">${formatSize(f.size_bytes)}</span>
+              </li>
+            `).join('');
+
+            // Reset
+            selectedFiles = [];
+            document.getElementById('fileCount').textContent = '';
+            fileInput.value = '';
+          } else {
+            showToast(data.message || 'Upload failed', 'error');
+          }
+        } catch {
+          showToast('Upload failed', 'error');
+        }
+
+        setTimeout(() => {
+          progressBar.classList.remove('active');
+          progressFill.style.width = '0%';
+          progressText.textContent = '';
+        }, 2000);
+      });
+
+      xhr.addEventListener('error', () => {
+        showToast('Upload failed — network error', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Upload Files';
+        progressBar.classList.remove('active');
+      });
+
+      xhr.open('POST', '/files/upload');
+      xhr.send(formData);
+    });
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

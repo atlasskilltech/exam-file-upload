@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Categories</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Categories</h1>
+        <p>Organize your files into categories.</p>
+      </div>
+
+      <!-- Create category form -->
+      <div class="card">
+        <div class="card-header">Create New Category</div>
+        <form id="createForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+            <label>Name</label>
+            <input type="text" class="form-control" id="catName" placeholder="Category name" required>
+          </div>
+          <div class="form-group" style="flex:1;min-width:200px;margin-bottom:0">
+            <label>Description (optional)</label>
+            <input type="text" class="form-control" id="catDesc" placeholder="Brief description">
+          </div>
+          <button type="submit" class="btn btn-primary">Create</button>
+        </form>
+      </div>
+
+      <!-- Categories list -->
+      <div class="card" style="position:relative">
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+        <div class="card-header">Your Categories</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Files</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="categoriesTable">
+              <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Edit modal -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <h3>Edit Category</h3>
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" class="form-control" id="editName">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" class="form-control" id="editDesc">
+      </div>
+      <input type="hidden" id="editId">
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      loadCategories();
+    })();
+
+    // Create category
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('catName').value.trim();
+      const description = document.getElementById('catDesc').value.trim();
+
+      if (!name) return;
+
+      try {
+        await apiFetch('/categories', {
+          method: 'POST',
+          body: JSON.stringify({ name, description })
+        });
+        showToast('Category created');
+        document.getElementById('catName').value = '';
+        document.getElementById('catDesc').value = '';
+        loadCategories();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    async function loadCategories() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.add('active');
+
+      try {
+        const res = await apiFetch('/categories');
+        const tbody = document.getElementById('categoriesTable');
+
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No categories yet. Create one above.</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(c => `
+            <tr>
+              <td><strong>${escapeHtml(c.name)}</strong></td>
+              <td>${escapeHtml(c.description || '—')}</td>
+              <td>${c.file_count || 0}</td>
+              <td>${formatDate(c.created_at)}</td>
+              <td>
+                <button class="btn btn-secondary btn-sm" onclick="openEditModal(${c.id}, '${escapeAttr(c.name)}', '${escapeAttr(c.description || '')}')">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCategory(${c.id}, '${escapeAttr(c.name)}')">Delete</button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Failed to load categories', 'error');
+      }
+
+      overlay.classList.remove('active');
+    }
+
+    function openEditModal(id, name, desc) {
+      document.getElementById('editId').value = id;
+      document.getElementById('editName').value = name;
+      document.getElementById('editDesc').value = desc;
+      document.getElementById('editModal').classList.add('active');
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').classList.remove('active');
+    }
+
+    async function saveEdit() {
+      const id = document.getElementById('editId').value;
+      const name = document.getElementById('editName').value.trim();
+      const description = document.getElementById('editDesc').value.trim();
+
+      if (!name) return showToast('Name is required', 'error');
+
+      try {
+        await apiFetch(`/categories/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name, description })
+        });
+        showToast('Category updated');
+        closeEditModal();
+        loadCategories();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function deleteCategory(id, name) {
+      const confirmed = await showConfirm(`Delete category "${name}"? Files in this category will become uncategorized.`);
+      if (!confirmed) return;
+
+      try {
+        await apiFetch(`/categories/${id}`, { method: 'DELETE' });
+        showToast('Category deleted');
+        loadCategories();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

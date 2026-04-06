@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Dashboard</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <!-- Sidebar injected by JS -->
+    <main class="main-content">
+      <div class="page-header">
+        <h1>Dashboard</h1>
+        <p>Welcome back. Here's your overview.</p>
+      </div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-value" id="statFiles">--</div>
+          <div class="stat-label">My Files</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statCategories">--</div>
+          <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statStorage">--</div>
+          <div class="stat-label">Storage Used</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statRecent">--</div>
+          <div class="stat-label">This Month</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Recent Files</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Category</th>
+                <th>Uploaded</th>
+              </tr>
+            </thead>
+            <tbody id="recentFiles">
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Recent Activity</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="recentActivity">
+              <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+
+      // Inject sidebar
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      // Load dashboard data
+      try {
+        // Fetch files
+        const filesRes = await apiFetch('/files?sort=newest&page=1');
+        const files = filesRes.data.files;
+
+        // Stats
+        document.getElementById('statFiles').textContent = filesRes.data.pagination.total;
+
+        let totalSize = 0;
+        let thisMonth = 0;
+        const now = new Date();
+        files.forEach(f => {
+          totalSize += f.size_bytes || 0;
+        });
+
+        // Get all files for accurate stats (use a larger query)
+        const allRes = await fetch('/files?sort=newest&page=1');
+        const allData = await allRes.json();
+        if (allData.success) {
+          document.getElementById('statFiles').textContent = allData.data.pagination.total;
+        }
+
+        // Count this month from recent files
+        files.forEach(f => {
+          const d = new Date(f.uploaded_at);
+          if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
+            thisMonth++;
+          }
+        });
+        document.getElementById('statRecent').textContent = thisMonth;
+
+        // Total storage from all files
+        let storageTotal = 0;
+        files.forEach(f => storageTotal += (f.size_bytes || 0));
+        document.getElementById('statStorage').textContent = formatSize(storageTotal);
+
+        // Categories count
+        const catRes = await apiFetch('/categories');
+        document.getElementById('statCategories').textContent = catRes.data.length;
+
+        // Recent files table
+        const tbody = document.getElementById('recentFiles');
+        if (files.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No files yet. <a href="/upload.html" style="color:var(--accent)">Upload your first file</a></td></tr>';
+        } else {
+          tbody.innerHTML = files.slice(0, 10).map(f => `
+            <tr>
+              <td>${escapeHtml(f.original_name)}</td>
+              <td>${formatSize(f.size_bytes)}</td>
+              <td>${f.category_name || '—'}</td>
+              <td>${formatDate(f.uploaded_at)}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error(err);
+      }
+
+      // Recent activity (for all users if admin, own logs visible via files)
+      try {
+        if (user.role === 'admin') {
+          const logRes = await apiFetch('/admin/logs');
+          const actBody = document.getElementById('recentActivity');
+          const logs = logRes.data.slice(0, 10);
+          if (logs.length === 0) {
+            actBody.innerHTML = '<tr><td colspan="3" class="empty-state">No activity yet</td></tr>';
+          } else {
+            actBody.innerHTML = logs.map(l => `
+              <tr>
+                <td>${escapeHtml(l.action)}</td>
+                <td>${escapeHtml(l.target || '')}</td>
+                <td>${formatDate(l.created_at)}</td>
+              </tr>
+            `).join('');
+          }
+        } else {
+          document.getElementById('recentActivity').innerHTML =
+            '<tr><td colspan="3" class="empty-state">Activity log available for admins</td></tr>';
+        }
+      } catch {
+        document.getElementById('recentActivity').innerHTML =
+          '<tr><td colspan="3" class="empty-state">Activity log available for admins</td></tr>';
+      }
+    })();
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
