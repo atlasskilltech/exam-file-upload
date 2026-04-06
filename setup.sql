@@ -6,6 +6,10 @@
 CREATE DATABASE IF NOT EXISTS localvault_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE localvault_db;
 
+-- Set timezone to IST
+SET GLOBAL time_zone = '+05:30';
+SET time_zone = '+05:30';
+
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
