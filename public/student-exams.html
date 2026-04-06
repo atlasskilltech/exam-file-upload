@@ -29,6 +29,7 @@
     .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s; margin: 12px 0; }
     .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
     .warning-text { color: var(--red); font-size: 12px; margin: 12px 0; }
+    .submitted-file { font-size: 12px; color: var(--green); margin-top: 4px; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -55,6 +56,7 @@
                 <th>Subject</th>
                 <th>File</th>
                 <th>Submitted</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="historyTable">
@@ -162,16 +164,24 @@
             </div>`;
           }).join('') || '<div style="color:var(--text-muted);font-size:12px">No schedule yet</div>';
 
-          let statusBadge, actionBtn;
+          let statusBadge, actionBtns;
+          const canSubmit = e.status === 'active' && !allExpired;
+
           if (e.submitted > 0) {
+            // Submitted — show view + re-upload (if still active)
             statusBadge = `<span class="sub-badge submitted">Submitted</span>`;
-            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Submitted</button>`;
-          } else if (e.status === 'closed' || allExpired) {
+            const fileInfo = `<div class="submitted-file">${esc(e.submission_file)} <span style="color:var(--text-muted);font-size:11px">${formatDate(e.submission_date)}</span></div>`;
+            const viewBtn = `<a href="/exams/submissions/download/${e.submission_id}" class="btn btn-secondary btn-sm">View File</a>`;
+            const reuploadBtn = canSubmit
+              ? `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', true)">Re-upload</button>`
+              : '';
+            actionBtns = `${fileInfo}<div style="display:flex;gap:8px;margin-top:8px">${viewBtn} ${reuploadBtn}</div>`;
+          } else if (!canSubmit) {
             statusBadge = `<span class="sub-badge closed">Closed</span>`;
-            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Closed</button>`;
+            actionBtns = `<button class="btn btn-secondary btn-sm" disabled>Closed</button>`;
           } else {
             statusBadge = `<span class="sub-badge not-submitted">Not Submitted</span>`;
-            actionBtn = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}')">Upload Answer</button>`;
+            actionBtns = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', false)">Upload Answer</button>`;
           }
 
           return `
@@ -180,7 +190,7 @@
               <span class="subject-badge">${esc(e.subject)}</span>
               <div style="margin:8px 0">${slotListHTML}</div>
               ${statusBadge}
-              <div style="margin-top:12px">${actionBtn}</div>
+              <div style="margin-top:12px">${actionBtns}</div>
             </div>
           `;
         }).join('');
@@ -224,7 +234,7 @@
         const res = await apiFetch('/exams/student/history');
         const tbody = document.getElementById('historyTable');
         if (res.data.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No submissions yet</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No submissions yet</td></tr>';
         } else {
           tbody.innerHTML = res.data.map(s => `
             <tr>
@@ -232,22 +242,27 @@
               <td>${esc(s.exam_subject)}</td>
               <td>${esc(s.original_name)}</td>
               <td>${formatDate(s.submitted_at)}</td>
+              <td><a href="/exams/submissions/download/${s.id}" class="btn btn-secondary btn-sm">View</a></td>
             </tr>
           `).join('');
         }
       } catch {
         document.getElementById('historyTable').innerHTML =
-          '<tr><td colspan="4" class="empty-state">Failed to load history</td></tr>';
+          '<tr><td colspan="5" class="empty-state">Failed to load history</td></tr>';
       }
     }
 
     // ── Upload modal ──────────────────────────────────────
-    function openUploadModal(examId, title, subject) {
+    function openUploadModal(examId, title, subject, isReupload) {
       document.getElementById('uploadExamId').value = examId;
       document.getElementById('uploadExamInfo').textContent = `${title} — ${subject}`;
       document.getElementById('selectedFileInfo').textContent = '';
-      document.getElementById('submitAnswerBtn').disabled = true;
-      document.getElementById('submitAnswerBtn').textContent = 'Submit Answer';
+      const btn = document.getElementById('submitAnswerBtn');
+      btn.disabled = true;
+      btn.textContent = isReupload ? 'Re-upload Answer' : 'Submit Answer';
+      document.querySelector('.warning-text').textContent = isReupload
+        ? 'This will replace your previous submission.'
+        : 'You can re-upload later if the exam is still open.';
       selectedFile = null;
       document.getElementById('answerFile').value = '';
       document.getElementById('uploadProgress').classList.remove('active');
