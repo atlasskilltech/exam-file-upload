@@ -14,7 +14,7 @@ function sanitize(str) {
 }
 
 async function getExamFolderName(examId) {
-  const [exams] = await pool.execute('SELECT title FROM exams WHERE id = ?', [examId]);
+  const [exams] = await pool.execute('SELECT title, subject FROM exams WHERE id = ?', [examId]);
   if (exams.length === 0) return null;
 
   const [slots] = await pool.execute(
@@ -23,7 +23,8 @@ async function getExamFolderName(examId) {
   );
 
   const title = sanitize(exams[0].title);
-  if (slots.length === 0) return title;
+  const subject = sanitize(exams[0].subject);
+  if (slots.length === 0) return `${title} - ${subject}`;
 
   const slot = slots[0];
   const room = sanitize(slot.room);
@@ -31,7 +32,7 @@ async function getExamFolderName(examId) {
   const start = slot.start_time.slice(0, 5).replace(':', '');
   const end = slot.end_time.slice(0, 5).replace(':', '');
 
-  return `${title} - ${room} - ${date} - ${start}-${end}`;
+  return `${title} - ${subject} - ${room} - ${date} - ${start}-${end}`;
 }
 
 function getExamFolderPath(folderName) {
