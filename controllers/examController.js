@@ -388,10 +388,12 @@ exports.studentExamList = async (req, res) => {
     const [exams] = await pool.execute(`
       SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
-        (SELECT sub.id FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_id
+        (SELECT sub.id FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_id,
+        (SELECT sub.original_name FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_file,
+        (SELECT sub.submitted_at FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_date
       FROM exams e
       ORDER BY e.created_at DESC
-    `, [userId, userId]);
+    `, [userId, userId, userId, userId]);
 
     // Fetch slots for each exam
     for (const exam of exams) {
@@ -472,18 +474,42 @@ exports.submitAnswer = async (req, res) => {
     }
 
     const [existing] = await pool.execute(
-      'SELECT id FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
+      'SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
       [examId, userId]
     );
-    if (existing.length > 0) {
-      return res.status(409).json({ success: false, message: 'You have already submitted for this exam' });
-    }
 
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
     const file = req.file;
+
+    // If re-uploading, delete old file and update record
+    if (existing.length > 0) {
+      const old = existing[0];
+      const oldPath = path.join(
+        __dirname, '..', 'uploads', 'exam_submissions',
+        `exam_${examId}`, `student_${userId}`, old.stored_name
+      );
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+
+      await pool.execute(
+        `UPDATE exam_submissions SET original_name = ?, stored_name = ?, mime_type = ?, size_bytes = ?, submitted_at = NOW()
+         WHERE id = ?`,
+        [file.originalname, file.filename, file.mimetype, file.size, old.id]
+      );
+
+      await pool.execute(
+        'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+        [userId, 're-uploaded exam answer', exam.title + ' - ' + file.originalname]
+      );
+
+      return res.json({ success: true, data: { id: old.id, reupload: true } });
+    }
+
+    // First submission
     const [result] = await pool.execute(
       `INSERT INTO exam_submissions (exam_id, student_id, original_name, stored_name, mime_type, size_bytes)
        VALUES (?, ?, ?, ?, ?, ?)`,
