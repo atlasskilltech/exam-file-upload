@@ -13,6 +13,19 @@ function sanitize(str) {
   return (str || '').replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// Helper: format MySQL date to YYYY-MM-DD string
+function formatDate(d) {
+  if (!d) return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
+// Helper: format MySQL time to HH:MM string
+function formatTime(t) {
+  if (!t) return '';
+  return String(t).slice(0, 5);
+}
+
 async function getExamFolderName(examId) {
   const [exams] = await pool.execute('SELECT title, subject FROM exams WHERE id = ?', [examId]);
   if (exams.length === 0) return null;
@@ -28,9 +41,9 @@ async function getExamFolderName(examId) {
 
   const slot = slots[0];
   const room = sanitize(slot.room);
-  const date = slot.slot_date;
-  const start = slot.start_time.slice(0, 5).replace(':', '');
-  const end = slot.end_time.slice(0, 5).replace(':', '');
+  const date = formatDate(slot.slot_date);
+  const start = formatTime(slot.start_time).replace(':', '');
+  const end = formatTime(slot.end_time).replace(':', '');
 
   return `${title} - ${subject} - ${room} - ${date} - ${start}-${end}`;
 }
@@ -512,7 +525,8 @@ exports.submitAnswer = async (req, res) => {
 
     if (slots.length > 0) {
       const lastSlot = slots[0];
-      const deadline = new Date(`${lastSlot.slot_date}T${lastSlot.end_time}`);
+      const deadlineStr = `${formatDate(lastSlot.slot_date)}T${formatTime(lastSlot.end_time)}:00`;
+      const deadline = new Date(deadlineStr);
       if (deadline < new Date()) {
         return res.status(400).json({ success: false, message: 'All exam slots have ended' });
       }
@@ -546,8 +560,9 @@ exports.submitAnswer = async (req, res) => {
     const storedName = `${sanitize(appId)}-${Date.now()}${ext}`;
     const destPath = path.join(folderPath, storedName);
 
-    // Move file from temp to exam folder
-    fs.renameSync(tempPath, destPath);
+    // Move file from temp to exam folder (copy+delete for cross-device safety)
+    fs.copyFileSync(tempPath, destPath);
+    fs.unlinkSync(tempPath);
 
     // If re-uploading, delete old file and update record
     if (existing.length > 0) {
@@ -586,8 +601,8 @@ exports.submitAnswer = async (req, res) => {
 
     return res.json({ success: true, data: { id: result.insertId } });
   } catch (err) {
-    console.error('Submit answer error:', err);
-    return res.status(500).json({ success: false, message: 'Submission failed' });
+    console.error('Submit answer error:', err.message, err.stack);
+    return res.status(500).json({ success: false, message: 'Submission failed: ' + err.message });
   }
 };
 
