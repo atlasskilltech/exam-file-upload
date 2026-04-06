@@ -1,17 +1,16 @@
 // Multer configuration for exam answer file uploads
+// Files upload to a temp directory first, then the controller
+// moves them to the proper exam-named folder
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const tempDir = path.join(__dirname, '..', 'uploads', 'exam_submissions', '_temp');
+fs.mkdirSync(tempDir, { recursive: true });
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(
-      __dirname, '..', 'uploads', 'exam_submissions',
-      `exam_${req.params.id}`,
-      `student_${req.session.user.id}`
-    );
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    cb(null, tempDir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);

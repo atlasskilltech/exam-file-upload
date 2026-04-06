@@ -6,7 +6,7 @@ const pool = require('../config/db');
 exports.listUsers = async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      'SELECT id, username, role, created_at FROM users ORDER BY created_at DESC'
+      'SELECT id, username, app_id, role, created_at FROM users ORDER BY created_at DESC'
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -18,10 +18,29 @@ exports.listUsers = async (req, res) => {
 // POST /admin/users/add
 exports.addUser = async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role, app_id } = req.body;
 
-    if (!username || !password) {
-      return res.status(400).json({ success: false, message: 'Username and password required' });
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Name is required' });
+    }
+
+    const validRoles = ['admin', 'user', 'student'];
+    const userRole = validRoles.includes(role) ? role : 'user';
+
+    // Students need app_id, others need password
+    if (userRole === 'student') {
+      if (!app_id) {
+        return res.status(400).json({ success: false, message: 'App ID is required for students' });
+      }
+      // Check if app_id already exists
+      const [existingAppId] = await pool.execute('SELECT id FROM users WHERE app_id = ?', [app_id.trim()]);
+      if (existingAppId.length > 0) {
+        return res.status(409).json({ success: false, message: 'App ID already exists' });
+      }
+    } else {
+      if (!password) {
+        return res.status(400).json({ success: false, message: 'Password is required' });
+      }
     }
 
     // Check if username exists
@@ -30,14 +49,13 @@ exports.addUser = async (req, res) => {
       return res.status(409).json({ success: false, message: 'Username already exists' });
     }
 
-    // Hash password
-    const hashed = await bcrypt.hash(password, 10);
-    const validRoles = ['admin', 'user', 'student'];
-    const userRole = validRoles.includes(role) ? role : 'user';
+    // Hash password (null for students)
+    const hashed = password ? await bcrypt.hash(password, 10) : null;
+    const cleanAppId = userRole === 'student' ? app_id.trim() : null;
 
     const [result] = await pool.execute(
-      'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',
-      [username, hashed, userRole]
+      'INSERT INTO users (username, password, app_id, role) VALUES (?, ?, ?, ?)',
+      [username, hashed, cleanAppId, userRole]
     );
 
     // Log action
