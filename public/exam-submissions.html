@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Exam Submissions</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .exam-banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; }
+    .exam-banner h2 { font-family: var(--font-heading); font-weight: 800; font-size: 22px; margin-bottom: 8px; }
+    .exam-banner .meta { color: var(--text-muted); font-size: 13px; margin-bottom: 8px; }
+    .exam-banner .meta span { margin-right: 16px; }
+    .slot-tag { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 11px; color: var(--cyan); margin: 2px 4px 2px 0; }
+    .slot-tag .room { color: var(--accent); }
+    .status-active { color: var(--green); }
+    .status-closed { color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1 id="pageTitle">Submissions</h1>
+          <p><a href="/exams.html" style="color:var(--accent);text-decoration:none">Back to Exams</a></p>
+        </div>
+        <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+      </div>
+
+      <div class="exam-banner" id="examBanner">Loading exam info...</div>
+
+      <div class="card" style="position:relative">
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Student</th>
+                <th>File Name</th>
+                <th>Size</th>
+                <th>Submitted At</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="subsTable">
+              <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const examId = params.get('id');
+    if (!examId) { window.location.href = '/exams.html'; }
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+      loadSubmissions();
+    })();
+
+    async function loadSubmissions() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.add('active');
+
+      try {
+        const res = await apiFetch(`/exams/${examId}/submissions`);
+        const { exam, slots, submissions } = res.data;
+
+        document.getElementById('pageTitle').textContent = `Submissions — ${exam.title}`;
+
+        const slotTags = (slots || []).map(s =>
+          `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${s.slot_date} ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>`
+        ).join('') || '<span style="color:var(--text-muted)">No slots</span>';
+
+        document.getElementById('examBanner').innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
+            <div>
+              <h2>${esc(exam.title)}</h2>
+              <div class="meta">
+                <span>Subject: ${esc(exam.subject)}</span>
+                <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
+              </div>
+              <div style="margin-top:6px">${slotTags}</div>
+            </div>
+            <div style="font-family:var(--font-heading);font-weight:700;font-size:24px;color:var(--accent)">
+              ${submissions.length} <span style="font-size:12px;color:var(--text-muted);font-weight:400">submissions</span>
+            </div>
+          </div>
+        `;
+
+        const tbody = document.getElementById('subsTable');
+        if (submissions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No submissions yet</td></tr>';
+        } else {
+          tbody.innerHTML = submissions.map((s, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${esc(s.student_name)}</td>
+              <td>${esc(s.original_name)}</td>
+              <td>${formatSize(s.size_bytes)}</td>
+              <td>${formatDate(s.submitted_at)}</td>
+              <td>
+                <a href="/exams/submissions/download/${s.id}" class="btn btn-secondary btn-sm">Download</a>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Failed to load submissions', 'error');
+      }
+
+      overlay.classList.remove('active');
+    }
+
+    function exportCSV() {
+      window.location.href = `/exams/${examId}/submissions/export`;
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>

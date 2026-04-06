@@ -23,4 +23,15 @@ function requireAdmin(req, res, next) {
   return res.redirect('/dashboard.html');
 }
 
-module.exports = { requireAuth, requireAdmin };
+// Student-only middleware
+function requireStudent(req, res, next) {
+  if (req.session.user && req.session.user.role === 'student') {
+    return next();
+  }
+  if (req.xhr || req.headers.accept?.includes('application/json')) {
+    return res.status(403).json({ success: false, message: 'Student access required' });
+  }
+  return res.redirect('/dashboard.html');
+}
+
+module.exports = { requireAuth, requireAdmin, requireStudent };

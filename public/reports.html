@@ -32,6 +32,26 @@
         </div>
       </div>
 
+      <!-- Exam Overview Stats -->
+      <div class="stats-grid" id="examStatsGrid" style="display:none">
+        <div class="stat-card">
+          <div class="stat-value" id="statExams">--</div>
+          <div class="stat-label">Total Exams</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statActiveExams">--</div>
+          <div class="stat-label">Active Exams</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statSubmissions">--</div>
+          <div class="stat-label">Submissions</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statStudents">--</div>
+          <div class="stat-label">Students</div>
+        </div>
+      </div>
+
       <!-- Charts -->
       <div class="charts-grid">
         <div class="card">
@@ -50,6 +70,16 @@
           <div class="card-header">Files by Category</div>
           <div class="chart-container">
             <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exam Charts -->
+      <div class="charts-grid" id="examChartsGrid" style="display:none;margin-top:24px">
+        <div class="card">
+          <div class="card-header">Submissions per Exam</div>
+          <div class="chart-container">
+            <canvas id="subsPerExamChart"></canvas>
           </div>
         </div>
       </div>
@@ -200,6 +230,48 @@
               <td>${formatDate(a.created_at)}</td>
             </tr>
           `).join('');
+        }
+
+        // ── Exam Stats ──────────────────────────────────────
+        try {
+          const examRes = await apiFetch('/exams/admin/exam-stats');
+          const ed = examRes.data;
+
+          document.getElementById('examStatsGrid').style.display = '';
+          document.getElementById('statExams').textContent = ed.totalExams;
+          document.getElementById('statActiveExams').textContent = ed.activeExams;
+          document.getElementById('statSubmissions').textContent = ed.totalSubmissions;
+          document.getElementById('statStudents').textContent = ed.totalStudents;
+
+          if (typeof Chart !== 'undefined') {
+            document.getElementById('examChartsGrid').style.display = '';
+
+            // Submissions per exam
+            if (ed.subsPerExam.length > 0) {
+              new Chart(document.getElementById('subsPerExamChart'), {
+                type: 'bar',
+                data: {
+                  labels: ed.subsPerExam.map(e => e.title),
+                  datasets: [{
+                    label: 'Submissions',
+                    data: ed.subsPerExam.map(e => e.count),
+                    backgroundColor: '#e8ff47',
+                    borderRadius: 4
+                  }]
+                },
+                options: {
+                  responsive: true, maintainAspectRatio: false,
+                  scales: {
+                    x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } },
+                    y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true }
+                  },
+                  plugins: { legend: { display: false } }
+                }
+              });
+            }
+          }
+        } catch (examErr) {
+          console.error('Exam stats error:', examErr);
         }
 
       } catch (err) {

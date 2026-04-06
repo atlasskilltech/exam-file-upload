@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — My Exams</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .exam-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; margin-bottom: 32px; }
+    .exam-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; transition: border-color 0.2s; }
+    .exam-card:hover { border-color: var(--accent); }
+    .exam-card .title { font-family: var(--font-heading); font-weight: 800; font-size: 18px; margin-bottom: 4px; }
+    .exam-card .subject-badge { display: inline-block; background: var(--cyan-dim); color: var(--cyan); padding: 2px 10px; border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .slot-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .slot-item .room { color: var(--accent); font-weight: 500; min-width: 70px; }
+    .slot-item .time { color: var(--cyan); }
+    .slot-item .countdown { font-family: var(--font-heading); font-weight: 700; font-size: 11px; margin-left: auto; }
+    .countdown.urgent { color: var(--red); }
+    .countdown.normal { color: var(--accent); }
+    .countdown.expired { color: var(--text-muted); }
+    .sub-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-top: 12px; }
+    .sub-badge.not-submitted { background: var(--red-dim); color: var(--red); }
+    .sub-badge.submitted { background: rgba(46,213,115,0.15); color: var(--green); }
+    .sub-badge.closed { background: var(--surface-2); color: var(--text-muted); }
+    .student-stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .student-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; text-align: center; flex: 1; min-width: 100px; }
+    .student-stat .val { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent); }
+    .student-stat .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s; margin: 12px 0; }
+    .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
+    .warning-text { color: var(--red); font-size: 12px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <h1>My Exams</h1>
+        <p>View exams and submit your answers.</p>
+      </div>
+
+      <div class="student-stats" id="studentStats"></div>
+
+      <div class="exam-cards" id="examCards">
+        <div class="empty-state">Loading exams...</div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Submission History</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Exam</th>
+                <th>Subject</th>
+                <th>File</th>
+                <th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody id="historyTable">
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Upload Answer Modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal" style="max-width:480px">
+      <h3>Upload Answer</h3>
+      <p style="color:var(--text-muted);font-size:13px" id="uploadExamInfo"></p>
+      <div class="upload-zone" id="uploadZone">
+        <div style="font-size:32px;margin-bottom:8px">+</div>
+        <div style="color:var(--text-muted);font-size:13px">Drop file here or <span style="color:var(--accent);text-decoration:underline">browse</span></div>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:4px">PDF, DOC, DOCX, JPG, PNG, ZIP — Max 100 MB</div>
+        <input type="file" id="answerFile" style="display:none" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip">
+      </div>
+      <div id="selectedFileInfo" style="font-size:13px;color:var(--accent);margin-bottom:8px"></div>
+      <div class="progress-bar" id="uploadProgress">
+        <div class="progress-fill" id="uploadProgressFill"></div>
+      </div>
+      <div class="progress-text" id="uploadProgressText"></div>
+      <p class="warning-text">You can only submit once. Double-check your file before submitting.</p>
+      <input type="hidden" id="uploadExamId">
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
+        <button class="btn btn-primary" id="submitAnswerBtn" disabled>Submit Answer</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let selectedFile = null;
+    let countdownInterval;
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'student') { window.location.href = '/dashboard.html'; return; }
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+
+      loadExams();
+      loadHistory();
+    })();
+
+    // Get the latest slot end datetime for an exam
+    function getLastDeadline(slots) {
+      if (!slots || slots.length === 0) return null;
+      let latest = null;
+      for (const s of slots) {
+        const dt = new Date(`${s.slot_date}T${s.end_time}`);
+        if (!latest || dt > latest) latest = dt;
+      }
+      return latest;
+    }
+
+    async function loadExams() {
+      try {
+        const res = await apiFetch('/exams/student/list');
+        const exams = res.data;
+
+        const assigned = exams.length;
+        const submitted = exams.filter(e => e.submitted > 0).length;
+
+        document.getElementById('studentStats').innerHTML = `
+          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Total Exams</div></div>
+          <div class="student-stat"><div class="val" style="color:var(--green)">${submitted}</div><div class="lbl">Submitted</div></div>
+          <div class="student-stat"><div class="val" style="color:var(--red)">${assigned - submitted}</div><div class="lbl">Pending</div></div>
+        `;
+
+        const container = document.getElementById('examCards');
+        if (exams.length === 0) {
+          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams available yet.</p></div>';
+          return;
+        }
+
+        container.innerHTML = exams.map(e => {
+          const now = new Date();
+          const deadline = getLastDeadline(e.slots);
+          const isExpired = deadline ? deadline <= now : false;
+          const allExpired = isExpired;
+
+          // Build slot list with per-slot countdown
+          const slotListHTML = (e.slots || []).map(s => {
+            const slotEnd = new Date(`${s.slot_date}T${s.end_time}`);
+            const diff = slotEnd - now;
+            const expired = diff <= 0;
+            const urgent = diff > 0 && diff < 24 * 60 * 60 * 1000;
+
+            return `<div class="slot-item">
+              <span class="room">${esc(s.room)}</span>
+              <span>${s.slot_date}</span>
+              <span class="time">${s.start_time.slice(0,5)} – ${s.end_time.slice(0,5)}</span>
+              <span class="countdown ${expired ? 'expired' : urgent ? 'urgent' : 'normal'}" data-end="${s.slot_date}T${s.end_time}">
+                ${expired ? 'Ended' : formatCountdown(diff)}
+              </span>
+            </div>`;
+          }).join('') || '<div style="color:var(--text-muted);font-size:12px">No schedule yet</div>';
+
+          let statusBadge, actionBtn;
+          if (e.submitted > 0) {
+            statusBadge = `<span class="sub-badge submitted">Submitted</span>`;
+            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Submitted</button>`;
+          } else if (e.status === 'closed' || allExpired) {
+            statusBadge = `<span class="sub-badge closed">Closed</span>`;
+            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Closed</button>`;
+          } else {
+            statusBadge = `<span class="sub-badge not-submitted">Not Submitted</span>`;
+            actionBtn = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}')">Upload Answer</button>`;
+          }
+
+          return `
+            <div class="exam-card">
+              <div class="title">${esc(e.title)}</div>
+              <span class="subject-badge">${esc(e.subject)}</span>
+              <div style="margin:8px 0">${slotListHTML}</div>
+              ${statusBadge}
+              <div style="margin-top:12px">${actionBtn}</div>
+            </div>
+          `;
+        }).join('');
+
+        // Live countdown timer
+        if (countdownInterval) clearInterval(countdownInterval);
+        countdownInterval = setInterval(updateCountdowns, 1000);
+
+      } catch (err) {
+        showToast('Failed to load exams', 'error');
+      }
+    }
+
+    function formatCountdown(ms) {
+      if (ms <= 0) return 'Ended';
+      const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+      const hrs = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((ms % (1000 * 60)) / 1000);
+      if (days > 0) return `${days}d ${hrs}h ${mins}m`;
+      if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+      return `${mins}m ${secs}s`;
+    }
+
+    function updateCountdowns() {
+      document.querySelectorAll('.countdown[data-end]').forEach(el => {
+        const end = new Date(el.dataset.end);
+        const diff = end - new Date();
+        if (diff <= 0) {
+          el.textContent = 'Ended';
+          el.className = 'countdown expired';
+        } else {
+          el.textContent = formatCountdown(diff);
+          el.className = 'countdown ' + (diff < 24 * 60 * 60 * 1000 ? 'urgent' : 'normal');
+        }
+      });
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await apiFetch('/exams/student/history');
+        const tbody = document.getElementById('historyTable');
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No submissions yet</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(s => `
+            <tr>
+              <td>${esc(s.exam_title)}</td>
+              <td>${esc(s.exam_subject)}</td>
+              <td>${esc(s.original_name)}</td>
+              <td>${formatDate(s.submitted_at)}</td>
+            </tr>
+          `).join('');
+        }
+      } catch {
+        document.getElementById('historyTable').innerHTML =
+          '<tr><td colspan="4" class="empty-state">Failed to load history</td></tr>';
+      }
+    }
+
+    // ── Upload modal ──────────────────────────────────────
+    function openUploadModal(examId, title, subject) {
+      document.getElementById('uploadExamId').value = examId;
+      document.getElementById('uploadExamInfo').textContent = `${title} — ${subject}`;
+      document.getElementById('selectedFileInfo').textContent = '';
+      document.getElementById('submitAnswerBtn').disabled = true;
+      document.getElementById('submitAnswerBtn').textContent = 'Submit Answer';
+      selectedFile = null;
+      document.getElementById('answerFile').value = '';
+      document.getElementById('uploadProgress').classList.remove('active');
+      document.getElementById('uploadProgressText').textContent = '';
+      document.getElementById('uploadModal').classList.add('active');
+    }
+
+    function closeUploadModal() {
+      document.getElementById('uploadModal').classList.remove('active');
+    }
+
+    const uploadZone = document.getElementById('uploadZone');
+    const answerFileInput = document.getElementById('answerFile');
+
+    uploadZone.addEventListener('click', () => answerFileInput.click());
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) selectFile(e.dataTransfer.files[0]);
+    });
+
+    answerFileInput.addEventListener('change', () => {
+      if (answerFileInput.files.length > 0) selectFile(answerFileInput.files[0]);
+    });
+
+    function selectFile(file) {
+      selectedFile = file;
+      document.getElementById('selectedFileInfo').textContent = `${file.name} (${formatSize(file.size)})`;
+      document.getElementById('submitAnswerBtn').disabled = false;
+    }
+
+    document.getElementById('submitAnswerBtn').addEventListener('click', () => {
+      if (!selectedFile) return;
+
+      const examId = document.getElementById('uploadExamId').value;
+      const btn = document.getElementById('submitAnswerBtn');
+      btn.disabled = true;
+      btn.textContent = 'Submitting...';
+
+      const formData = new FormData();
+      formData.append('answer_file', selectedFile);
+
+      const xhr = new XMLHttpRequest();
+      const progressBar = document.getElementById('uploadProgress');
+      const progressFill = document.getElementById('uploadProgressFill');
+      const progressText = document.getElementById('uploadProgressText');
+      progressBar.classList.add('active');
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          progressFill.style.width = pct + '%';
+          progressText.textContent = `${pct}% — ${formatSize(e.loaded)} / ${formatSize(e.total)}`;
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            showToast('Answer submitted successfully!');
+            closeUploadModal();
+            loadExams();
+            loadHistory();
+          } else {
+            showToast(data.message || 'Submission failed', 'error');
+            btn.disabled = false;
+            btn.textContent = 'Submit Answer';
+          }
+        } catch {
+          showToast('Submission failed', 'error');
+          btn.disabled = false;
+          btn.textContent = 'Submit Answer';
+        }
+        progressBar.classList.remove('active');
+      });
+
+      xhr.addEventListener('error', () => {
+        showToast('Network error', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Submit Answer';
+        progressBar.classList.remove('active');
+      });
+
+      xhr.open('POST', `/exams/student/${examId}/submit`);
+      xhr.send(formData);
+    });
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+    function escAttr(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

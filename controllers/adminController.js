@@ -32,7 +32,8 @@ exports.addUser = async (req, res) => {
 
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
-    const userRole = (role === 'admin') ? 'admin' : 'user';
+    const validRoles = ['admin', 'user', 'student'];
+    const userRole = validRoles.includes(role) ? role : 'user';
 
     const [result] = await pool.execute(
       'INSERT INTO users (username, password, role) VALUES (?, ?, ?)',

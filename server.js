@@ -33,12 +33,14 @@ const authRoutes = require('./routes/authRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const examRoutes = require('./routes/examRoutes');
 
 // ── Mount routes ──────────────────────────────────────────────
 app.use('/auth', authRoutes);
 app.use('/files', fileRoutes);
 app.use('/categories', categoryRoutes);
 app.use('/admin', adminRoutes);
+app.use('/exams', examRoutes);
 
 // ── Root redirects to login page ──────────────────────────────
 app.get('/', (req, res) => {

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
-  role ENUM('admin', 'user') DEFAULT 'user',
+  role ENUM('admin', 'user', 'student') DEFAULT 'user',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -49,10 +49,47 @@ CREATE TABLE IF NOT EXISTS activity_log (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Seed admin user (password: admin123)
--- Seed student user (password: student123)
+-- Exams table (basic info only, scheduling in exam_slots)
+CREATE TABLE IF NOT EXISTS exams (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  title        VARCHAR(255) NOT NULL,
+  subject      VARCHAR(150) NOT NULL,
+  status       ENUM('active','closed') DEFAULT 'active',
+  created_by   INT,
+  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Exam slots — multiple time slots per exam (same room, different times)
+CREATE TABLE IF NOT EXISTS exam_slots (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  exam_id      INT NOT NULL,
+  slot_date    DATE NOT NULL,
+  start_time   TIME NOT NULL,
+  end_time     TIME NOT NULL,
+  room         VARCHAR(100) NOT NULL,
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+);
+
+-- Exam submissions table
+CREATE TABLE IF NOT EXISTS exam_submissions (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  exam_id        INT NOT NULL,
+  student_id     INT NOT NULL,
+  original_name  VARCHAR(255) NOT NULL,
+  stored_name    VARCHAR(255) NOT NULL,
+  mime_type      VARCHAR(100),
+  size_bytes     BIGINT,
+  submitted_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (exam_id)    REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Seed users
+-- admin / admin123 | student1 / student123 | student2 / student123
 -- bcrypt hashes generated with 10 salt rounds
 INSERT INTO users (username, password, role) VALUES
   ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', 'admin'),
-  ('student', '$2a$10$mk4YPTeFKE3DDpmG8k/D1.4DdFMTshV4x8C7G3JLnXEbfwG92ZqeG', 'user')
+  ('student1', '$2a$10$yN3vk6n/9GdrRs/pjKUJa.9yo6zLaMF.qVr1wopIYIch3ntbEBnSW', 'student'),
+  ('student2', '$2a$10$yN3vk6n/9GdrRs/pjKUJa.9yo6zLaMF.qVr1wopIYIch3ntbEBnSW', 'student')
 ON DUPLICATE KEY UPDATE username = username;
