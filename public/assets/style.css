@@ -107,6 +107,8 @@ body::before {
 
 .sidebar-nav .admin-only { display: none; }
 .sidebar-nav .admin-only.show { display: flex; }
+.sidebar-nav .student-only { display: none; }
+.sidebar-nav .student-only.show { display: flex; }
 
 .sidebar-user {
   padding: 16px 20px;
@@ -689,4 +691,9 @@ tbody tr:hover {
 .badge-user {
   background: var(--accent-dim);
   color: var(--accent);
+}
+
+.badge-student {
+  background: rgba(52, 152, 219, 0.15);
+  color: #3498db;
 }

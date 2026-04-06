@@ -30,6 +30,7 @@
             <label>Role</label>
             <select class="form-control" id="newRole">
               <option value="user">User</option>
+              <option value="student">Student</option>
               <option value="admin">Admin</option>
             </select>
           </div>
@@ -52,6 +53,27 @@
               </tr>
             </thead>
             <tbody id="usersTable">
+              <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Student Management -->
+      <div class="card">
+        <div class="card-header">Student Accounts</div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Joined</th>
+                <th>Exams Assigned</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="studentsTable">
               <tr><td colspan="5" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
@@ -99,6 +121,7 @@
       initSidebar(user);
 
       loadUsers();
+      loadStudents();
       loadLogs();
     })();
 
@@ -169,6 +192,29 @@
       } catch (err) {
         showToast('Failed to load logs', 'error');
       }
+    }
+
+    async function loadStudents() {
+      try {
+        const res = await apiFetch('/exams/admin/students');
+        const tbody = document.getElementById('studentsTable');
+
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No student accounts yet</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(s => `
+            <tr>
+              <td>${s.id}</td>
+              <td>${escapeHtml(s.username)}</td>
+              <td>${formatDate(s.created_at)}</td>
+              <td>—</td>
+              <td>
+                <button class="btn btn-danger btn-sm" onclick="deleteUser(${s.id}, '${escapeAttr(s.username)}')">Delete</button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch {}
     }
 
     async function deleteUser(id, username) {

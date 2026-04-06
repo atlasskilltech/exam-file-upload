@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalVault — Exam Manager</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .exam-stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .exam-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; text-align: center; flex: 1; min-width: 120px; }
+    .exam-stat .val { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent); }
+    .exam-stat .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .status-active { color: var(--green); }
+    .status-closed { color: var(--text-muted); }
+    .enroll-list { max-height: 300px; overflow-y: auto; }
+    .enroll-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+    .enroll-item input[type="checkbox"] { accent-color: var(--accent); }
+    .enroll-search { margin-bottom: 12px; }
+    .room-info { color: var(--cyan); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1>Exam Manager</h1>
+          <p>Create and manage exams, enroll students.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Create Exam</button>
+      </div>
+
+      <div class="exam-stats" id="examStats"></div>
+
+      <div class="card" style="position:relative">
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Subject</th>
+                <th>Due Date</th>
+                <th>Room</th>
+                <th>Status</th>
+                <th>Enrolled</th>
+                <th>Submissions</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="examsTable">
+              <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create/Edit Exam Modal -->
+  <div class="modal-overlay" id="examModal">
+    <div class="modal" style="max-width:480px">
+      <h3 id="examModalTitle">Create Exam</h3>
+      <form id="examForm">
+        <input type="hidden" id="examEditId">
+        <div class="form-group">
+          <label>Exam Title</label>
+          <input type="text" class="form-control" id="examTitle" required>
+        </div>
+        <div class="form-group">
+          <label>Subject</label>
+          <input type="text" class="form-control" id="examSubject" required>
+        </div>
+        <div class="form-group">
+          <label>Due Date & Time</label>
+          <input type="datetime-local" class="form-control" id="examDueDate" required>
+        </div>
+        <div class="form-group">
+          <label>Room (optional)</label>
+          <input type="text" class="form-control" id="examRoom" placeholder="e.g. Room 301">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeExamModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="examSubmitBtn">Create Exam</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Enroll Students Modal -->
+  <div class="modal-overlay" id="enrollModal">
+    <div class="modal" style="max-width:480px">
+      <h3>Enroll Students — <span id="enrollExamTitle"></span></h3>
+      <input type="text" class="form-control enroll-search" id="enrollSearch" placeholder="Search students...">
+      <div class="enroll-list" id="enrollList"></div>
+      <input type="hidden" id="enrollExamId">
+      <div style="margin-top:12px;font-size:12px;color:var(--text-muted)" id="enrollCount"></div>
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="closeEnrollModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEnrollment()">Save Enrollment</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let allStudents = [];
+    let enrolledIds = [];
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+      loadExams();
+    })();
+
+    async function loadExams() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.add('active');
+
+      try {
+        const res = await apiFetch('/exams');
+        const exams = res.data;
+        const tbody = document.getElementById('examsTable');
+
+        // Stats
+        const total = exams.length;
+        const active = exams.filter(e => e.status === 'active').length;
+        const closed = total - active;
+        const totalSubs = exams.reduce((a, e) => a + (e.submission_count || 0), 0);
+
+        document.getElementById('examStats').innerHTML = `
+          <div class="exam-stat"><div class="val">${total}</div><div class="lbl">Total Exams</div></div>
+          <div class="exam-stat"><div class="val" style="color:var(--green)">${active}</div><div class="lbl">Active</div></div>
+          <div class="exam-stat"><div class="val" style="color:var(--text-muted)">${closed}</div><div class="lbl">Closed</div></div>
+          <div class="exam-stat"><div class="val" style="color:var(--cyan)">${totalSubs}</div><div class="lbl">Submissions</div></div>
+        `;
+
+        if (exams.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No exams yet. Create one to get started.</td></tr>';
+        } else {
+          tbody.innerHTML = exams.map((e, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td><strong>${esc(e.title)}</strong></td>
+              <td>${esc(e.subject)}</td>
+              <td>${formatDate(e.due_date)}</td>
+              <td>${e.room ? '<span class="room-info">' + esc(e.room) + '</span>' : '—'}</td>
+              <td><span class="status-${e.status}">${e.status}</span></td>
+              <td>${e.enrolled_count || 0}</td>
+              <td>${e.submission_count || 0}</td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-secondary btn-sm" onclick="openEnrollModal(${e.id}, '${escAttr(e.title)}')" title="Enroll Students">Enroll</button>
+                <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm" title="View Submissions">View</a>
+                <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', '${e.due_date}', '${escAttr(e.room || '')}')" title="Edit">Edit</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')" title="Toggle Status">${e.status === 'active' ? 'Close' : 'Open'}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteExam(${e.id}, '${escAttr(e.title)}')" title="Delete">Del</button>
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Failed to load exams', 'error');
+      }
+
+      overlay.classList.remove('active');
+    }
+
+    // ── Create/Edit modal ─────────────────────────────────
+    function openCreateModal() {
+      document.getElementById('examModalTitle').textContent = 'Create Exam';
+      document.getElementById('examSubmitBtn').textContent = 'Create Exam';
+      document.getElementById('examEditId').value = '';
+      document.getElementById('examForm').reset();
+      // Set min date to now
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      document.getElementById('examDueDate').min = now.toISOString().slice(0, 16);
+      document.getElementById('examModal').classList.add('active');
+    }
+
+    function openEditModal(id, title, subject, dueDate, room) {
+      document.getElementById('examModalTitle').textContent = 'Edit Exam';
+      document.getElementById('examSubmitBtn').textContent = 'Save Changes';
+      document.getElementById('examEditId').value = id;
+      document.getElementById('examTitle').value = title;
+      document.getElementById('examSubject').value = subject;
+      // Format due_date for datetime-local input
+      const d = new Date(dueDate);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      document.getElementById('examDueDate').value = d.toISOString().slice(0, 16);
+      document.getElementById('examRoom').value = room;
+      document.getElementById('examModal').classList.add('active');
+    }
+
+    function closeExamModal() {
+      document.getElementById('examModal').classList.remove('active');
+    }
+
+    document.getElementById('examForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const editId = document.getElementById('examEditId').value;
+      const body = {
+        title: document.getElementById('examTitle').value,
+        subject: document.getElementById('examSubject').value,
+        due_date: document.getElementById('examDueDate').value,
+        room: document.getElementById('examRoom').value
+      };
+
+      try {
+        if (editId) {
+          await apiFetch(`/exams/update/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+          showToast('Exam updated');
+        } else {
+          await apiFetch('/exams/create', { method: 'POST', body: JSON.stringify(body) });
+          showToast('Exam created');
+        }
+        closeExamModal();
+        loadExams();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // ── Status toggle ─────────────────────────────────────
+    async function toggleStatus(id, newStatus) {
+      try {
+        await apiFetch(`/exams/${id}/status`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+        showToast(`Exam ${newStatus}`);
+        loadExams();
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    // ── Delete exam ───────────────────────────────────────
+    async function deleteExam(id, title) {
+      const ok = await showConfirm(`Delete exam "${title}" and all its submissions?`);
+      if (!ok) return;
+      try {
+        await apiFetch(`/exams/delete/${id}`, { method: 'DELETE' });
+        showToast('Exam deleted');
+        loadExams();
+      } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    // ── Enroll modal ──────────────────────────────────────
+    async function openEnrollModal(examId, examTitle) {
+      document.getElementById('enrollExamTitle').textContent = examTitle;
+      document.getElementById('enrollExamId').value = examId;
+      document.getElementById('enrollModal').classList.add('active');
+
+      // Fetch all students
+      try {
+        const studRes = await apiFetch('/exams/admin/students');
+        allStudents = studRes.data;
+      } catch { allStudents = []; }
+
+      // Fetch current enrollment
+      try {
+        const subRes = await apiFetch(`/exams/${examId}/submissions`);
+        enrolledIds = subRes.data.enrolled.map(e => e.student_id);
+      } catch { enrolledIds = []; }
+
+      renderEnrollList('');
+
+      document.getElementById('enrollSearch').value = '';
+      document.getElementById('enrollSearch').oninput = (e) => renderEnrollList(e.target.value);
+    }
+
+    function renderEnrollList(filter) {
+      const list = document.getElementById('enrollList');
+      const filtered = allStudents.filter(s =>
+        s.username.toLowerCase().includes(filter.toLowerCase())
+      );
+
+      list.innerHTML = filtered.map(s => `
+        <label class="enroll-item">
+          <input type="checkbox" value="${s.id}" ${enrolledIds.includes(s.id) ? 'checked' : ''}
+                 onchange="toggleEnrollCheck(${s.id}, this.checked)">
+          <span>${esc(s.username)}</span>
+        </label>
+      `).join('');
+
+      document.getElementById('enrollCount').textContent =
+        `${enrolledIds.length} student(s) selected`;
+    }
+
+    function toggleEnrollCheck(id, checked) {
+      if (checked && !enrolledIds.includes(id)) enrolledIds.push(id);
+      if (!checked) enrolledIds = enrolledIds.filter(i => i !== id);
+      document.getElementById('enrollCount').textContent =
+        `${enrolledIds.length} student(s) selected`;
+    }
+
+    function closeEnrollModal() {
+      document.getElementById('enrollModal').classList.remove('active');
+    }
+
+    async function saveEnrollment() {
+      const examId = document.getElementById('enrollExamId').value;
+
+      // First unenroll everyone, then re-enroll selected
+      // Simpler: just enroll selected (INSERT IGNORE handles duplicates)
+      try {
+        // Get current enrolled
+        const subRes = await apiFetch(`/exams/${examId}/submissions`);
+        const currentEnrolled = subRes.data.enrolled.map(e => e.student_id);
+
+        // Unenroll those not in new list
+        for (const sid of currentEnrolled) {
+          if (!enrolledIds.includes(sid)) {
+            await apiFetch(`/exams/${examId}/unenroll/${sid}`, { method: 'DELETE' });
+          }
+        }
+
+        // Enroll new ones
+        if (enrolledIds.length > 0) {
+          await apiFetch(`/exams/${examId}/enroll`, {
+            method: 'POST',
+            body: JSON.stringify({ student_ids: enrolledIds })
+          });
+        }
+
+        showToast('Enrollment saved');
+        closeEnrollModal();
+        loadExams();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+    function escAttr(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
