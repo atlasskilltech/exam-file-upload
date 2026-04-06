@@ -1,6 +1,10 @@
 // ================================================================
 // LocalVault — Main Express Server
 // ================================================================
+
+// Set Node.js timezone to IST
+process.env.TZ = 'Asia/Kolkata';
+
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
