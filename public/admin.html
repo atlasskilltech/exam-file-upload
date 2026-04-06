@@ -18,23 +18,27 @@
       <div class="card">
         <div class="card-header">Add New User</div>
         <form id="addUserForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-          <div class="form-group" style="flex:1;min-width:150px;margin-bottom:0">
-            <label>Username</label>
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
+            <label>Name</label>
             <input type="text" class="form-control" id="newUsername" required>
           </div>
-          <div class="form-group" style="flex:1;min-width:150px;margin-bottom:0">
+          <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0" id="passwordGroup">
             <label>Password</label>
-            <input type="password" class="form-control" id="newPassword" required>
+            <input type="password" class="form-control" id="newPassword">
+          </div>
+          <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0" id="appIdGroup" style="display:none">
+            <label>App ID</label>
+            <input type="text" class="form-control" id="newAppId" placeholder="e.g. STU001">
           </div>
           <div class="form-group" style="min-width:120px;margin-bottom:0">
             <label>Role</label>
-            <select class="form-control" id="newRole">
+            <select class="form-control" id="newRole" onchange="toggleRoleFields()">
               <option value="user">User</option>
               <option value="student">Student</option>
               <option value="admin">Admin</option>
             </select>
           </div>
-          <button type="submit" class="btn btn-primary">Add User</button>
+          <button type="submit" class="btn btn-primary">Add</button>
         </form>
       </div>
 
@@ -46,14 +50,15 @@
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Username</th>
+                <th>Name</th>
+                <th>App ID</th>
                 <th>Role</th>
                 <th>Joined</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="usersTable">
-              <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+              <tr><td colspan="6" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -67,9 +72,9 @@
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Username</th>
+                <th>Name</th>
+                <th>App ID</th>
                 <th>Joined</th>
-                <th>Exams Assigned</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -125,24 +130,48 @@
       loadLogs();
     })();
 
+    // Toggle password/app_id fields based on role
+    function toggleRoleFields() {
+      const role = document.getElementById('newRole').value;
+      const pwGroup = document.getElementById('passwordGroup');
+      const appGroup = document.getElementById('appIdGroup');
+      if (role === 'student') {
+        pwGroup.style.display = 'none';
+        appGroup.style.display = 'block';
+        document.getElementById('newPassword').removeAttribute('required');
+        document.getElementById('newAppId').setAttribute('required', '');
+      } else {
+        pwGroup.style.display = 'block';
+        appGroup.style.display = 'none';
+        document.getElementById('newPassword').setAttribute('required', '');
+        document.getElementById('newAppId').removeAttribute('required');
+      }
+    }
+    toggleRoleFields();
+
     // Add user
     document.getElementById('addUserForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('newUsername').value.trim();
       const password = document.getElementById('newPassword').value;
       const role = document.getElementById('newRole').value;
+      const app_id = document.getElementById('newAppId').value.trim();
 
-      if (!username || !password) return;
+      if (!username) return;
+      if (role === 'student' && !app_id) { showToast('App ID is required for students', 'error'); return; }
+      if (role !== 'student' && !password) { showToast('Password is required', 'error'); return; }
 
       try {
         await apiFetch('/admin/users/add', {
           method: 'POST',
-          body: JSON.stringify({ username, password, role })
+          body: JSON.stringify({ username, password: role === 'student' ? null : password, role, app_id: role === 'student' ? app_id : null })
         });
         showToast('User added successfully');
         document.getElementById('newUsername').value = '';
         document.getElementById('newPassword').value = '';
+        document.getElementById('newAppId').value = '';
         loadUsers();
+        loadStudents();
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -157,6 +186,7 @@
           <tr>
             <td>${u.id}</td>
             <td>${escapeHtml(u.username)}</td>
+            <td>${u.app_id ? '<code style="color:var(--cyan)">' + escapeHtml(u.app_id) + '</code>' : '—'}</td>
             <td><span class="badge badge-${u.role}">${u.role}</span></td>
             <td>${formatDate(u.created_at)}</td>
             <td>
@@ -206,8 +236,8 @@
             <tr>
               <td>${s.id}</td>
               <td>${escapeHtml(s.username)}</td>
+              <td><code style="color:var(--cyan)">${escapeHtml(s.app_id || '—')}</code></td>
               <td>${formatDate(s.created_at)}</td>
-              <td>—</td>
               <td>
                 <button class="btn btn-danger btn-sm" onclick="deleteUser(${s.id}, '${escapeAttr(s.username)}')">Delete</button>
               </td>

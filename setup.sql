@@ -10,7 +10,8 @@ USE localvault_db;
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
-  password VARCHAR(255) NOT NULL,
+  password VARCHAR(255) DEFAULT NULL,
+  app_id   VARCHAR(50) UNIQUE DEFAULT NULL,
   role ENUM('admin', 'user', 'student') DEFAULT 'user',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -87,10 +88,10 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
 );
 
 -- Seed users
--- admin / admin123 | student1 / student123 | student2 / student123
--- bcrypt hashes generated with 10 salt rounds
-INSERT INTO users (username, password, role) VALUES
-  ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', 'admin'),
-  ('student1', '$2a$10$yN3vk6n/9GdrRs/pjKUJa.9yo6zLaMF.qVr1wopIYIch3ntbEBnSW', 'student'),
-  ('student2', '$2a$10$yN3vk6n/9GdrRs/pjKUJa.9yo6zLaMF.qVr1wopIYIch3ntbEBnSW', 'student')
+-- admin login: username=admin, password=admin123
+-- students login with app_id only (no password needed)
+INSERT INTO users (username, password, app_id, role) VALUES
+  ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', NULL, 'admin'),
+  ('Student One', NULL, 'STU001', 'student'),
+  ('Student Two', NULL, 'STU002', 'student')
 ON DUPLICATE KEY UPDATE username = username;

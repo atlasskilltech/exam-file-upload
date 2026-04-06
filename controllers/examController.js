@@ -375,7 +375,7 @@ exports.exportCSV = async (req, res) => {
 exports.listStudents = async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      "SELECT id, username, created_at FROM users WHERE role = 'student' ORDER BY username"
+      "SELECT id, username, app_id, created_at FROM users WHERE role = 'student' ORDER BY username"
     );
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -537,10 +537,10 @@ exports.submitAnswer = async (req, res) => {
     const folderPath = getExamFolderPath(folderName);
     fs.mkdirSync(folderPath, { recursive: true });
 
-    // Filename: "{username}-{timestamp}{ext}"
-    const username = req.session.user.username;
+    // Filename: "{app_id}-{timestamp}{ext}"
+    const appId = req.session.user.app_id || req.session.user.username;
     const ext = path.extname(file.originalname);
-    const storedName = `${sanitize(username)}-${Date.now()}${ext}`;
+    const storedName = `${sanitize(appId)}-${Date.now()}${ext}`;
     const destPath = path.join(folderPath, storedName);
 
     // Move file from temp to exam folder

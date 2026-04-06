@@ -5,36 +5,90 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalVault — Login</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .login-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .login-tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.2s; font-family: var(--font-body); background: none; border-top: none; border-left: none; border-right: none; }
+    .login-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .login-tab:hover { color: var(--text); }
+    .login-panel { display: none; }
+    .login-panel.active { display: block; }
+    .appid-input { font-size: 20px !important; text-align: center; letter-spacing: 3px; font-family: var(--font-heading) !important; font-weight: 700; }
+    .appid-hint { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+  </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-box">
       <h1>LocalVault</h1>
       <p class="subtitle">Offline File Management System</p>
+
+      <div class="login-tabs">
+        <button class="login-tab active" onclick="switchTab('admin')">Admin / User</button>
+        <button class="login-tab" onclick="switchTab('student')">Student</button>
+      </div>
+
       <div class="error-msg" id="errorMsg"></div>
-      <form id="loginForm">
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" class="form-control" id="username" autocomplete="username" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" class="form-control" id="password" autocomplete="current-password" required>
-        </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" id="loginBtn">
-          Login
-        </button>
-      </form>
+
+      <!-- Admin/User login -->
+      <div class="login-panel active" id="adminPanel">
+        <form id="adminLoginForm">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" class="form-control" id="username" autocomplete="username" required>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" class="form-control" id="password" autocomplete="current-password" required>
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px" id="adminLoginBtn">
+            Login
+          </button>
+        </form>
+      </div>
+
+      <!-- Student login -->
+      <div class="login-panel" id="studentPanel">
+        <form id="studentLoginForm">
+          <div class="form-group">
+            <label>Enter Your App ID</label>
+            <input type="text" class="form-control appid-input" id="appId" placeholder="STU001" autocomplete="off" required>
+          </div>
+          <p class="appid-hint">Enter the App ID provided by your admin</p>
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:16px" id="studentLoginBtn">
+            Login
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 
   <script>
-    // If already logged in, redirect to dashboard
-    fetch('/auth/check').then(r => { if (r.ok) window.location.href = '/dashboard.html'; });
+    // If already logged in, redirect
+    fetch('/auth/check').then(r => {
+      if (r.ok) return r.json().then(d => {
+        window.location.href = d.data.role === 'student' ? '/student-exams.html' : '/dashboard.html';
+      });
+    });
 
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    // Tab switching
+    function switchTab(tab) {
+      document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.login-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('errorMsg').style.display = 'none';
+
+      if (tab === 'admin') {
+        document.querySelector('.login-tab:first-child').classList.add('active');
+        document.getElementById('adminPanel').classList.add('active');
+      } else {
+        document.querySelector('.login-tab:last-child').classList.add('active');
+        document.getElementById('studentPanel').classList.add('active');
+      }
+    }
+
+    // Admin/User login
+    document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = document.getElementById('loginBtn');
+      const btn = document.getElementById('adminLoginBtn');
       const errorMsg = document.getElementById('errorMsg');
       btn.disabled = true;
       btn.textContent = 'Logging in...';
@@ -52,6 +106,39 @@
         const data = await res.json();
         if (data.success) {
           window.location.href = '/dashboard.html';
+        } else {
+          errorMsg.textContent = data.message;
+          errorMsg.style.display = 'block';
+        }
+      } catch {
+        errorMsg.textContent = 'Connection error. Is the server running?';
+        errorMsg.style.display = 'block';
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Login';
+    });
+
+    // Student login
+    document.getElementById('studentLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('studentLoginBtn');
+      const errorMsg = document.getElementById('errorMsg');
+      btn.disabled = true;
+      btn.textContent = 'Logging in...';
+      errorMsg.style.display = 'none';
+
+      try {
+        const res = await fetch('/auth/student-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            app_id: document.getElementById('appId').value.trim()
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/student-exams.html';
         } else {
           errorMsg.textContent = data.message;
           errorMsg.style.display = 'block';
