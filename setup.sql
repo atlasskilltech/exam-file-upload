@@ -50,7 +50,9 @@ CREATE TABLE IF NOT EXISTS activity_log (
 );
 
 -- Seed admin user (password: admin123)
--- bcrypt hash for 'admin123' with 10 salt rounds
+-- Seed student user (password: student123)
+-- bcrypt hashes generated with 10 salt rounds
 INSERT INTO users (username, password, role) VALUES
-  ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', 'admin')
+  ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', 'admin'),
+  ('student', '$2a$10$mk4YPTeFKE3DDpmG8k/D1.4DdFMTshV4x8C7G3JLnXEbfwG92ZqeG', 'user')
 ON DUPLICATE KEY UPDATE username = username;
