@@ -5,18 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalVault — Admin Panel</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .upload-csv-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s; margin-bottom: 12px; }
+    .upload-csv-area:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .upload-result { margin-top: 12px; font-size: 13px; }
+    .upload-result .ok { color: var(--green); }
+    .upload-result .skip { color: var(--red); }
+    .upload-errors { margin-top: 8px; font-size: 12px; color: var(--text-muted); max-height: 120px; overflow-y: auto; }
+  </style>
 </head>
 <body>
   <div class="app-layout" id="app">
     <main class="main-content">
       <div class="page-header">
         <h1>Admin Panel</h1>
-        <p>Manage users and view system activity.</p>
+        <p>Manage users and students.</p>
       </div>
 
-      <!-- Add user form -->
+      <!-- Add single user -->
       <div class="card">
-        <div class="card-header">Add New User</div>
+        <div class="card-header">Add User / Student</div>
         <form id="addUserForm" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
           <div class="form-group" style="flex:1;min-width:130px;margin-bottom:0">
             <label>Name</label>
@@ -26,15 +34,15 @@
             <label>Password</label>
             <input type="password" class="form-control" id="newPassword">
           </div>
-          <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0" id="appIdGroup" style="display:none">
+          <div class="form-group" style="flex:1;min-width:100px;margin-bottom:0;display:none" id="appIdGroup">
             <label>App ID</label>
             <input type="text" class="form-control" id="newAppId" placeholder="e.g. STU001">
           </div>
           <div class="form-group" style="min-width:120px;margin-bottom:0">
             <label>Role</label>
             <select class="form-control" id="newRole" onchange="toggleRoleFields()">
-              <option value="user">User</option>
               <option value="student">Student</option>
+              <option value="user">User</option>
               <option value="admin">Admin</option>
             </select>
           </div>
@@ -42,7 +50,20 @@
         </form>
       </div>
 
-      <!-- Users table -->
+      <!-- Bulk CSV upload -->
+      <div class="card">
+        <div class="card-header">Bulk Upload Students (CSV)</div>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px">CSV format: <code>name,app_id</code> — one student per line. Duplicate App IDs will be skipped.</p>
+        <div class="upload-csv-area" id="csvArea" onclick="document.getElementById('csvFile').click()">
+          <div style="color:var(--text-muted);font-size:14px">Click to select CSV file</div>
+          <input type="file" id="csvFile" accept=".csv,.txt" style="display:none">
+        </div>
+        <div id="csvFileName" style="font-size:13px;color:var(--accent);margin-bottom:8px"></div>
+        <button class="btn btn-primary" id="csvUploadBtn" disabled onclick="uploadCSV()">Upload Students</button>
+        <div class="upload-result" id="csvResult"></div>
+      </div>
+
+      <!-- All Users table -->
       <div class="card">
         <div class="card-header">All Users</div>
         <div class="table-wrapper">
@@ -64,7 +85,7 @@
         </div>
       </div>
 
-      <!-- Student Management -->
+      <!-- Student Accounts -->
       <div class="card">
         <div class="card-header">Student Accounts</div>
         <div class="table-wrapper">
@@ -110,27 +131,24 @@
   <script src="/assets/app.js"></script>
   <script>
     let currentUser;
+    let selectedCSV = null;
 
     (async () => {
       const user = await checkAuth();
       if (!user) return;
-
-      // Admin-only page
-      if (user.role !== 'admin') {
-        window.location.href = '/dashboard.html';
-        return;
-      }
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
 
       currentUser = user;
       document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
       initSidebar(user);
 
+      toggleRoleFields();
       loadUsers();
       loadStudents();
       loadLogs();
     })();
 
-    // Toggle password/app_id fields based on role
+    // ── Toggle fields based on role ───────────────────────
     function toggleRoleFields() {
       const role = document.getElementById('newRole').value;
       const pwGroup = document.getElementById('passwordGroup');
@@ -138,18 +156,13 @@
       if (role === 'student') {
         pwGroup.style.display = 'none';
         appGroup.style.display = 'block';
-        document.getElementById('newPassword').removeAttribute('required');
-        document.getElementById('newAppId').setAttribute('required', '');
       } else {
         pwGroup.style.display = 'block';
         appGroup.style.display = 'none';
-        document.getElementById('newPassword').setAttribute('required', '');
-        document.getElementById('newAppId').removeAttribute('required');
       }
     }
-    toggleRoleFields();
 
-    // Add user
+    // ── Add single user ───────────────────────────────────
     document.getElementById('addUserForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const username = document.getElementById('newUsername').value.trim();
@@ -164,7 +177,12 @@
       try {
         await apiFetch('/admin/users/add', {
           method: 'POST',
-          body: JSON.stringify({ username, password: role === 'student' ? null : password, role, app_id: role === 'student' ? app_id : null })
+          body: JSON.stringify({
+            username,
+            password: role === 'student' ? null : password,
+            role,
+            app_id: role === 'student' ? app_id : null
+          })
         });
         showToast('User added successfully');
         document.getElementById('newUsername').value = '';
@@ -177,6 +195,55 @@
       }
     });
 
+    // ── CSV upload ────────────────────────────────────────
+    document.getElementById('csvFile').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        selectedCSV = e.target.files[0];
+        document.getElementById('csvFileName').textContent = selectedCSV.name;
+        document.getElementById('csvUploadBtn').disabled = false;
+      }
+    });
+
+    async function uploadCSV() {
+      if (!selectedCSV) return;
+      const btn = document.getElementById('csvUploadBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+      document.getElementById('csvResult').innerHTML = '';
+
+      const formData = new FormData();
+      formData.append('csv_file', selectedCSV);
+
+      try {
+        const res = await fetch('/admin/users/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.success) {
+          const d = data.data;
+          let html = `<span class="ok">${d.added} students added</span>`;
+          if (d.skipped > 0) html += ` &nbsp;|&nbsp; <span class="skip">${d.skipped} skipped</span>`;
+          if (d.errors && d.errors.length > 0) {
+            html += `<div class="upload-errors">${d.errors.map(e => `<div>${escapeHtml(e)}</div>`).join('')}</div>`;
+          }
+          document.getElementById('csvResult').innerHTML = html;
+          showToast(`${d.added} students added`);
+          loadUsers();
+          loadStudents();
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch {
+        showToast('Upload failed', 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Upload Students';
+      selectedCSV = null;
+      document.getElementById('csvFile').value = '';
+      document.getElementById('csvFileName').textContent = '';
+    }
+
+    // ── Load tables ───────────────────────────────────────
     async function loadUsers() {
       try {
         const res = await apiFetch('/admin/users');
@@ -199,28 +266,6 @@
         `).join('');
       } catch (err) {
         showToast('Failed to load users', 'error');
-      }
-    }
-
-    async function loadLogs() {
-      try {
-        const res = await apiFetch('/admin/logs');
-        const tbody = document.getElementById('logsTable');
-
-        if (res.data.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity yet</td></tr>';
-        } else {
-          tbody.innerHTML = res.data.map(l => `
-            <tr>
-              <td>${escapeHtml(l.username || 'Unknown')}</td>
-              <td>${escapeHtml(l.action)}</td>
-              <td>${escapeHtml(l.target || '—')}</td>
-              <td>${formatDate(l.created_at)}</td>
-            </tr>
-          `).join('');
-        }
-      } catch (err) {
-        showToast('Failed to load logs', 'error');
       }
     }
 
@@ -247,6 +292,28 @@
       } catch {}
     }
 
+    async function loadLogs() {
+      try {
+        const res = await apiFetch('/admin/logs');
+        const tbody = document.getElementById('logsTable');
+
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No activity yet</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(l => `
+            <tr>
+              <td>${escapeHtml(l.username || 'Unknown')}</td>
+              <td>${escapeHtml(l.action)}</td>
+              <td>${escapeHtml(l.target || '—')}</td>
+              <td>${formatDate(l.created_at)}</td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        showToast('Failed to load logs', 'error');
+      }
+    }
+
     async function deleteUser(id, username) {
       const confirmed = await showConfirm(`Delete user "${username}"? This cannot be undone.`);
       if (!confirmed) return;
@@ -255,6 +322,7 @@
         await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
         showToast('User deleted');
         loadUsers();
+        loadStudents();
         loadLogs();
       } catch (err) {
         showToast(err.message, 'error');
