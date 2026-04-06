@@ -517,19 +517,15 @@ exports.submitAnswer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Exam is closed, submissions not accepted' });
     }
 
-    // Check if last slot has passed (deadline = latest slot end)
-    const [slots] = await pool.execute(
-      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date DESC, end_time DESC LIMIT 1',
+    // Check if last slot has passed (let MySQL compare using server time)
+    const [expiredCheck] = await pool.execute(
+      `SELECT COUNT(*) AS still_open FROM exam_slots
+       WHERE exam_id = ? AND CONCAT(slot_date, ' ', end_time) > NOW()`,
       [examId]
     );
 
-    if (slots.length > 0) {
-      const lastSlot = slots[0];
-      const deadlineStr = `${formatDate(lastSlot.slot_date)}T${formatTime(lastSlot.end_time)}:00`;
-      const deadline = new Date(deadlineStr);
-      if (deadline < new Date()) {
-        return res.status(400).json({ success: false, message: 'All exam slots have ended' });
-      }
+    if (expiredCheck[0].still_open === 0) {
+      return res.status(400).json({ success: false, message: 'All exam slots have ended' });
     }
 
     const [existing] = await pool.execute(
