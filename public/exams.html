@@ -109,6 +109,16 @@
 
   <script src="/assets/app.js"></script>
   <script>
+    // Parse date/time from MySQL (may come as ISO or raw)
+    function fmtDate(d) {
+      if (!d) return '';
+      return new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    }
+    function fmtTime(t) {
+      if (!t) return '';
+      return String(t).slice(0, 5);
+    }
+
     (async () => {
       const user = await checkAuth();
       if (!user) return;
@@ -145,7 +155,7 @@
         } else {
           tbody.innerHTML = exams.map((e, i) => {
             const slotTags = (e.slots || []).map(s =>
-              `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${s.slot_date} ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>`
+              `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}</span>`
             ).join('');
 
             return `<tr>
@@ -182,9 +192,9 @@
       row.className = 'slot-row';
       row.id = `slot-row-${id}`;
       row.innerHTML = `
-        <input type="date" class="form-control slot-date" value="${data?.slot_date || ''}" required>
-        <input type="time" class="form-control slot-start" value="${data?.start_time?.slice(0,5) || ''}" required>
-        <input type="time" class="form-control slot-end" value="${data?.end_time?.slice(0,5) || ''}" required>
+        <input type="date" class="form-control slot-date" value="${data ? fmtDate(data.slot_date) : ''}" required>
+        <input type="time" class="form-control slot-start" value="${data ? fmtTime(data.start_time) : ''}" required>
+        <input type="time" class="form-control slot-end" value="${data ? fmtTime(data.end_time) : ''}" required>
         <input type="text" class="form-control slot-room" value="${data?.room || ''}" placeholder="Room" required>
         <button type="button" class="remove-slot" onclick="this.parentElement.remove()">x</button>
       `;
@@ -293,7 +303,7 @@
         } else {
           container.innerHTML = res.data.map(s => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-              <span><strong style="color:var(--accent)">${esc(s.room)}</strong> — ${s.slot_date} ${s.start_time.slice(0,5)} to ${s.end_time.slice(0,5)}</span>
+              <span><strong style="color:var(--accent)">${esc(s.room)}</strong> — ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)} to ${fmtTime(s.end_time)}</span>
               <button class="btn btn-danger btn-sm" onclick="removeSlot(${s.id})">Remove</button>
             </div>
           `).join('');

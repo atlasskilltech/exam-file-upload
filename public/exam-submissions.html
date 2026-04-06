@@ -54,6 +54,9 @@
 
   <script src="/assets/app.js"></script>
   <script>
+    function fmtDate(d) { if (!d) return ''; return new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); }
+    function fmtTime(t) { if (!t) return ''; return String(t).slice(0, 5); }
+
     const params = new URLSearchParams(window.location.search);
     const examId = params.get('id');
     if (!examId) { window.location.href = '/exams.html'; }
@@ -79,7 +82,7 @@
         document.getElementById('pageTitle').textContent = `Submissions — ${exam.title}`;
 
         const slotTags = (slots || []).map(s =>
-          `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${s.slot_date} ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>`
+          `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}</span>`
         ).join('') || '<span style="color:var(--text-muted)">No slots</span>';
 
         document.getElementById('examBanner').innerHTML = `
