@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
   student_id     INT NOT NULL,
   original_name  VARCHAR(255) NOT NULL,
   stored_name    VARCHAR(255) NOT NULL,
+  folder_name    VARCHAR(500) DEFAULT NULL,
   mime_type      VARCHAR(100),
   size_bytes     BIGINT,
   submitted_at   DATETIME DEFAULT CURRENT_TIMESTAMP,

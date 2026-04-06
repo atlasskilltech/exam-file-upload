@@ -4,6 +4,40 @@ const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
 
+const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
+
+// ── Helper: build folder name from exam + slot ────────────
+// Format: "{ExamTitle} - {Room} - {Date} - {Start}-{End}"
+// Sanitizes for filesystem safety
+function sanitize(str) {
+  return (str || '').replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+async function getExamFolderName(examId) {
+  const [exams] = await pool.execute('SELECT title FROM exams WHERE id = ?', [examId]);
+  if (exams.length === 0) return null;
+
+  const [slots] = await pool.execute(
+    'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time LIMIT 1',
+    [examId]
+  );
+
+  const title = sanitize(exams[0].title);
+  if (slots.length === 0) return title;
+
+  const slot = slots[0];
+  const room = sanitize(slot.room);
+  const date = slot.slot_date;
+  const start = slot.start_time.slice(0, 5).replace(':', '');
+  const end = slot.end_time.slice(0, 5).replace(':', '');
+
+  return `${title} - ${room} - ${date} - ${start}-${end}`;
+}
+
+function getExamFolderPath(folderName) {
+  return path.join(SUBMISSIONS_BASE, folderName);
+}
+
 // ════════════════════════════════════════════════════════════
 // ADMIN ENDPOINTS
 // ════════════════════════════════════════════════════════════
@@ -132,11 +166,19 @@ exports.deleteExam = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
-    // Delete files from disk
-    const examDir = path.join(__dirname, '..', 'uploads', 'exam_submissions', `exam_${examId}`);
-    if (fs.existsSync(examDir)) {
-      fs.rmSync(examDir, { recursive: true, force: true });
+    // Delete files from disk — find all unique folders used by this exam's submissions
+    const [subs] = await pool.execute(
+      'SELECT DISTINCT folder_name FROM exam_submissions WHERE exam_id = ?', [examId]
+    );
+    for (const sub of subs) {
+      if (sub.folder_name) {
+        const dir = path.join(SUBMISSIONS_BASE, sub.folder_name);
+        if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+      }
     }
+    // Also clean up legacy folder if exists
+    const legacyDir = path.join(SUBMISSIONS_BASE, `exam_${examId}`);
+    if (fs.existsSync(legacyDir)) fs.rmSync(legacyDir, { recursive: true, force: true });
 
     await pool.execute('DELETE FROM exams WHERE id = ?', [examId]);
 
@@ -275,10 +317,9 @@ exports.downloadSubmission = async (req, res) => {
     }
 
     const sub = rows[0];
-    const filePath = path.join(
-      __dirname, '..', 'uploads', 'exam_submissions',
-      `exam_${sub.exam_id}`, `student_${sub.student_id}`, sub.stored_name
-    );
+    const filePath = sub.folder_name
+      ? path.join(SUBMISSIONS_BASE, sub.folder_name, sub.stored_name)
+      : path.join(SUBMISSIONS_BASE, `exam_${sub.exam_id}`, `student_${sub.student_id}`, sub.stored_name);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: 'File not found on disk' });
@@ -483,22 +524,40 @@ exports.submitAnswer = async (req, res) => {
     }
 
     const file = req.file;
+    const tempPath = file.path; // multer saved to _temp/
+
+    // Build the exam folder name: "{Title} - {Room} - {Date} - {Start}-{End}"
+    const folderName = await getExamFolderName(examId);
+    if (!folderName) {
+      fs.unlinkSync(tempPath);
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const folderPath = getExamFolderPath(folderName);
+    fs.mkdirSync(folderPath, { recursive: true });
+
+    // Filename: "{username}-{timestamp}{ext}"
+    const username = req.session.user.username;
+    const ext = path.extname(file.originalname);
+    const storedName = `${sanitize(username)}-${Date.now()}${ext}`;
+    const destPath = path.join(folderPath, storedName);
+
+    // Move file from temp to exam folder
+    fs.renameSync(tempPath, destPath);
 
     // If re-uploading, delete old file and update record
     if (existing.length > 0) {
       const old = existing[0];
-      const oldPath = path.join(
-        __dirname, '..', 'uploads', 'exam_submissions',
-        `exam_${examId}`, `student_${userId}`, old.stored_name
-      );
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
+      const oldFolder = old.folder_name ? getExamFolderPath(old.folder_name) : null;
+      if (oldFolder) {
+        const oldFilePath = path.join(oldFolder, old.stored_name);
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
       }
 
       await pool.execute(
-        `UPDATE exam_submissions SET original_name = ?, stored_name = ?, mime_type = ?, size_bytes = ?, submitted_at = NOW()
+        `UPDATE exam_submissions SET original_name = ?, stored_name = ?, folder_name = ?, mime_type = ?, size_bytes = ?, submitted_at = NOW()
          WHERE id = ?`,
-        [file.originalname, file.filename, file.mimetype, file.size, old.id]
+        [file.originalname, storedName, folderName, file.mimetype, file.size, old.id]
       );
 
       await pool.execute(
@@ -511,9 +570,9 @@ exports.submitAnswer = async (req, res) => {
 
     // First submission
     const [result] = await pool.execute(
-      `INSERT INTO exam_submissions (exam_id, student_id, original_name, stored_name, mime_type, size_bytes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [examId, userId, file.originalname, file.filename, file.mimetype, file.size]
+      `INSERT INTO exam_submissions (exam_id, student_id, original_name, stored_name, folder_name, mime_type, size_bytes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [examId, userId, file.originalname, storedName, folderName, file.mimetype, file.size]
     );
 
     await pool.execute(
