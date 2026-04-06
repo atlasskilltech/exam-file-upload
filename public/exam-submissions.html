@@ -6,14 +6,12 @@
   <title>LocalVault — Exam Submissions</title>
   <link rel="stylesheet" href="/assets/style.css">
   <style>
-    .exam-banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
-    .exam-banner h2 { font-family: var(--font-heading); font-weight: 800; font-size: 22px; }
-    .exam-banner .meta { color: var(--text-muted); font-size: 13px; }
+    .exam-banner { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; }
+    .exam-banner h2 { font-family: var(--font-heading); font-weight: 800; font-size: 22px; margin-bottom: 8px; }
+    .exam-banner .meta { color: var(--text-muted); font-size: 13px; margin-bottom: 8px; }
     .exam-banner .meta span { margin-right: 16px; }
-    .sub-stats { display: flex; gap: 12px; flex-wrap: wrap; }
-    .sub-stat { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 16px; text-align: center; min-width: 80px; }
-    .sub-stat .v { font-family: var(--font-heading); font-weight: 700; font-size: 20px; }
-    .sub-stat .l { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .slot-tag { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 11px; color: var(--cyan); margin: 2px 4px 2px 0; }
+    .slot-tag .room { color: var(--accent); }
     .status-active { color: var(--green); }
     .status-closed { color: var(--text-muted); }
   </style>
@@ -58,7 +56,6 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const examId = params.get('id');
-
     if (!examId) { window.location.href = '/exams.html'; }
 
     (async () => {
@@ -77,22 +74,27 @@
 
       try {
         const res = await apiFetch(`/exams/${examId}/submissions`);
-        const { exam, submissions } = res.data;
+        const { exam, slots, submissions } = res.data;
 
         document.getElementById('pageTitle').textContent = `Submissions — ${exam.title}`;
 
+        const slotTags = (slots || []).map(s =>
+          `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${s.slot_date} ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>`
+        ).join('') || '<span style="color:var(--text-muted)">No slots</span>';
+
         document.getElementById('examBanner').innerHTML = `
-          <div>
-            <h2>${esc(exam.title)}</h2>
-            <div class="meta">
-              <span>Subject: ${esc(exam.subject)}</span>
-              <span>Due: ${formatDate(exam.due_date)}</span>
-              ${exam.room ? '<span>Room: ' + esc(exam.room) + '</span>' : ''}
-              <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
+            <div>
+              <h2>${esc(exam.title)}</h2>
+              <div class="meta">
+                <span>Subject: ${esc(exam.subject)}</span>
+                <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
+              </div>
+              <div style="margin-top:6px">${slotTags}</div>
             </div>
-          </div>
-          <div class="sub-stats">
-            <div class="sub-stat"><div class="v" style="color:var(--accent)">${submissions.length}</div><div class="l">Submitted</div></div>
+            <div style="font-family:var(--font-heading);font-weight:700;font-size:24px;color:var(--accent)">
+              ${submissions.length} <span style="font-size:12px;color:var(--text-muted);font-weight:400">submissions</span>
+            </div>
           </div>
         `;
 

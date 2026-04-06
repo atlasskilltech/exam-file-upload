@@ -49,17 +49,26 @@ CREATE TABLE IF NOT EXISTS activity_log (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Exams table
+-- Exams table (basic info only, scheduling in exam_slots)
 CREATE TABLE IF NOT EXISTS exams (
   id           INT AUTO_INCREMENT PRIMARY KEY,
   title        VARCHAR(255) NOT NULL,
   subject      VARCHAR(150) NOT NULL,
-  due_date     DATETIME     NOT NULL,
-  room         VARCHAR(100) DEFAULT NULL,
   status       ENUM('active','closed') DEFAULT 'active',
   created_by   INT,
   created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Exam slots — multiple time slots per exam (same room, different times)
+CREATE TABLE IF NOT EXISTS exam_slots (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  exam_id      INT NOT NULL,
+  slot_date    DATE NOT NULL,
+  start_time   TIME NOT NULL,
+  end_time     TIME NOT NULL,
+  room         VARCHAR(100) NOT NULL,
+  FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
 );
 
 -- Exam submissions table

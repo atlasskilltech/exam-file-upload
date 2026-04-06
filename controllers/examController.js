@@ -1,5 +1,5 @@
 // Exam controller — admin exam management + student submissions
-// No enrollment, no grading — students see all active exams and submit files
+// Exams have multiple time slots (date, start_time, end_time, room)
 const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
@@ -8,16 +8,27 @@ const fs = require('fs');
 // ADMIN ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams — list all exams
+// GET /exams — list all exams with slot count + submission count
 exports.listExams = async (req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT e.*, u.username AS created_by_name,
-        (SELECT COUNT(*) FROM exam_submissions WHERE exam_id = e.id) AS submission_count
+        (SELECT COUNT(*) FROM exam_submissions WHERE exam_id = e.id) AS submission_count,
+        (SELECT COUNT(*) FROM exam_slots WHERE exam_id = e.id) AS slot_count
       FROM exams e
       LEFT JOIN users u ON e.created_by = u.id
       ORDER BY e.created_at DESC
     `);
+
+    // Fetch slots for each exam
+    for (const exam of rows) {
+      const [slots] = await pool.execute(
+        'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+        [exam.id]
+      );
+      exam.slots = slots;
+    }
+
     return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('List exams error:', err);
@@ -25,45 +36,56 @@ exports.listExams = async (req, res) => {
   }
 };
 
-// POST /exams/create
+// POST /exams/create — create exam with slots
 exports.createExam = async (req, res) => {
   try {
-    const { title, subject, due_date, room } = req.body;
+    const { title, subject, slots } = req.body;
     const user = req.session.user;
 
-    if (!title || !subject || !due_date) {
-      return res.status(400).json({ success: false, message: 'Title, subject, and due date are required' });
+    if (!title || !subject) {
+      return res.status(400).json({ success: false, message: 'Title and subject are required' });
     }
 
-    if (new Date(due_date) <= new Date()) {
-      return res.status(400).json({ success: false, message: 'Due date must be in the future' });
+    if (!slots || !Array.isArray(slots) || slots.length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one time slot is required' });
     }
 
     const [result] = await pool.execute(
-      'INSERT INTO exams (title, subject, due_date, room, created_by) VALUES (?, ?, ?, ?, ?)',
-      [title.trim(), subject.trim(), due_date, room || null, user.id]
+      'INSERT INTO exams (title, subject, created_by) VALUES (?, ?, ?)',
+      [title.trim(), subject.trim(), user.id]
     );
+
+    const examId = result.insertId;
+
+    // Insert slots
+    for (const slot of slots) {
+      if (!slot.slot_date || !slot.start_time || !slot.end_time || !slot.room) continue;
+      await pool.execute(
+        'INSERT INTO exam_slots (exam_id, slot_date, start_time, end_time, room) VALUES (?, ?, ?, ?, ?)',
+        [examId, slot.slot_date, slot.start_time, slot.end_time, slot.room.trim()]
+      );
+    }
 
     await pool.execute(
       'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
       [user.id, 'created exam', title.trim()]
     );
 
-    return res.json({ success: true, data: { id: result.insertId } });
+    return res.json({ success: true, data: { id: examId } });
   } catch (err) {
     console.error('Create exam error:', err);
     return res.status(500).json({ success: false, message: 'Failed to create exam' });
   }
 };
 
-// PUT /exams/update/:id
+// PUT /exams/update/:id — update exam info + replace slots
 exports.updateExam = async (req, res) => {
   try {
-    const { title, subject, due_date, room } = req.body;
+    const { title, subject, slots } = req.body;
     const examId = req.params.id;
 
-    if (!title || !subject || !due_date) {
-      return res.status(400).json({ success: false, message: 'Title, subject, and due date are required' });
+    if (!title || !subject) {
+      return res.status(400).json({ success: false, message: 'Title and subject are required' });
     }
 
     const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
@@ -72,9 +94,21 @@ exports.updateExam = async (req, res) => {
     }
 
     await pool.execute(
-      'UPDATE exams SET title = ?, subject = ?, due_date = ?, room = ? WHERE id = ?',
-      [title.trim(), subject.trim(), due_date, room || null, examId]
+      'UPDATE exams SET title = ?, subject = ? WHERE id = ?',
+      [title.trim(), subject.trim(), examId]
     );
+
+    // Replace all slots if provided
+    if (slots && Array.isArray(slots)) {
+      await pool.execute('DELETE FROM exam_slots WHERE exam_id = ?', [examId]);
+      for (const slot of slots) {
+        if (!slot.slot_date || !slot.start_time || !slot.end_time || !slot.room) continue;
+        await pool.execute(
+          'INSERT INTO exam_slots (exam_id, slot_date, start_time, end_time, room) VALUES (?, ?, ?, ?, ?)',
+          [examId, slot.slot_date, slot.start_time, slot.end_time, slot.room.trim()]
+        );
+      }
+    }
 
     await pool.execute(
       'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
@@ -137,7 +171,58 @@ exports.changeStatus = async (req, res) => {
   }
 };
 
-// GET /exams/:id/submissions — view all submissions for an exam
+// ── Slot management ───────────────────────────────────────
+
+// POST /exams/:id/slots — add a single slot
+exports.addSlot = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const { slot_date, start_time, end_time, room } = req.body;
+
+    if (!slot_date || !start_time || !end_time || !room) {
+      return res.status(400).json({ success: false, message: 'All slot fields are required' });
+    }
+
+    const [result] = await pool.execute(
+      'INSERT INTO exam_slots (exam_id, slot_date, start_time, end_time, room) VALUES (?, ?, ?, ?, ?)',
+      [examId, slot_date, start_time, end_time, room.trim()]
+    );
+
+    return res.json({ success: true, data: { id: result.insertId } });
+  } catch (err) {
+    console.error('Add slot error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to add slot' });
+  }
+};
+
+// DELETE /exams/slots/:slotId — remove a slot
+exports.deleteSlot = async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM exam_slots WHERE id = ?', [req.params.slotId]);
+    return res.json({ success: true, message: 'Slot deleted' });
+  } catch (err) {
+    console.error('Delete slot error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to delete slot' });
+  }
+};
+
+// GET /exams/:id/slots — get all slots for an exam
+exports.getSlots = async (req, res) => {
+  try {
+    const [slots] = await pool.execute(
+      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+      [req.params.id]
+    );
+    return res.json({ success: true, data: slots });
+  } catch (err) {
+    console.error('Get slots error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch slots' });
+  }
+};
+
+// ── Submissions ───────────────────────────────────────────
+
+// GET /exams/:id/submissions
 exports.listSubmissions = async (req, res) => {
   try {
     const examId = req.params.id;
@@ -146,6 +231,11 @@ exports.listSubmissions = async (req, res) => {
     if (exams.length === 0) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
+
+    const [slots] = await pool.execute(
+      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+      [examId]
+    );
 
     const [submissions] = await pool.execute(`
       SELECT es.*, u.username AS student_name
@@ -157,7 +247,7 @@ exports.listSubmissions = async (req, res) => {
 
     return res.json({
       success: true,
-      data: { exam: exams[0], submissions }
+      data: { exam: exams[0], slots, submissions }
     });
   } catch (err) {
     console.error('List submissions error:', err);
@@ -165,7 +255,7 @@ exports.listSubmissions = async (req, res) => {
   }
 };
 
-// GET /exams/submissions/download/:id — download a submission file
+// GET /exams/submissions/download/:id
 exports.downloadSubmission = async (req, res) => {
   try {
     const subId = req.params.id;
@@ -174,7 +264,6 @@ exports.downloadSubmission = async (req, res) => {
     let query = 'SELECT es.*, e.title AS exam_title FROM exam_submissions es LEFT JOIN exams e ON es.exam_id = e.id WHERE es.id = ?';
     const params = [subId];
 
-    // Students can only download their own
     if (user.role === 'student') {
       query += ' AND es.student_id = ?';
       params.push(user.id);
@@ -202,7 +291,7 @@ exports.downloadSubmission = async (req, res) => {
   }
 };
 
-// GET /exams/:id/submissions/export — export CSV
+// GET /exams/:id/submissions/export
 exports.exportCSV = async (req, res) => {
   try {
     const examId = req.params.id;
@@ -240,7 +329,7 @@ exports.exportCSV = async (req, res) => {
   }
 };
 
-// GET /admin/students — list all student accounts
+// GET /admin/students
 exports.listStudents = async (req, res) => {
   try {
     const [rows] = await pool.execute(
@@ -253,7 +342,7 @@ exports.listStudents = async (req, res) => {
   }
 };
 
-// GET /admin/exam-stats — exam overview for reports
+// GET /admin/exam-stats
 exports.examStats = async (req, res) => {
   try {
     const [totalExams] = await pool.execute('SELECT COUNT(*) AS count FROM exams');
@@ -261,8 +350,8 @@ exports.examStats = async (req, res) => {
     const [closedExams] = await pool.execute("SELECT COUNT(*) AS count FROM exams WHERE status = 'closed'");
     const [totalSubs] = await pool.execute('SELECT COUNT(*) AS count FROM exam_submissions');
     const [totalStudents] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'student'");
+    const [totalSlots] = await pool.execute('SELECT COUNT(*) AS count FROM exam_slots');
 
-    // Submissions per exam
     const [subsPerExam] = await pool.execute(`
       SELECT e.title, COUNT(es.id) AS count
       FROM exams e LEFT JOIN exam_submissions es ON e.id = es.exam_id
@@ -277,6 +366,7 @@ exports.examStats = async (req, res) => {
         closedExams: closedExams[0].count,
         totalSubmissions: totalSubs[0].count,
         totalStudents: totalStudents[0].count,
+        totalSlots: totalSlots[0].count,
         subsPerExam
       }
     });
@@ -290,7 +380,7 @@ exports.examStats = async (req, res) => {
 // STUDENT ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams/student/list — all active exams visible to students
+// GET /exams/student/list — all exams with slots visible to students
 exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
@@ -300,8 +390,17 @@ exports.studentExamList = async (req, res) => {
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
         (SELECT sub.id FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_id
       FROM exams e
-      ORDER BY e.due_date ASC
+      ORDER BY e.created_at DESC
     `, [userId, userId]);
+
+    // Fetch slots for each exam
+    for (const exam of exams) {
+      const [slots] = await pool.execute(
+        'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+        [exam.id]
+      );
+      exam.slots = slots;
+    }
 
     return res.json({ success: true, data: exams });
   } catch (err) {
@@ -321,6 +420,11 @@ exports.studentExamDetail = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
+    const [slots] = await pool.execute(
+      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
+      [examId]
+    );
+
     const [subs] = await pool.execute(
       'SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
       [examId, userId]
@@ -328,7 +432,7 @@ exports.studentExamDetail = async (req, res) => {
 
     return res.json({
       success: true,
-      data: { exam: exams[0], submission: subs[0] || null }
+      data: { exam: exams[0], slots, submission: subs[0] || null }
     });
   } catch (err) {
     console.error('Student exam detail error:', err);
@@ -353,8 +457,18 @@ exports.submitAnswer = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Exam is closed, submissions not accepted' });
     }
 
-    if (new Date(exam.due_date) < new Date()) {
-      return res.status(400).json({ success: false, message: 'Due date has passed' });
+    // Check if last slot has passed (deadline = latest slot end)
+    const [slots] = await pool.execute(
+      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date DESC, end_time DESC LIMIT 1',
+      [examId]
+    );
+
+    if (slots.length > 0) {
+      const lastSlot = slots[0];
+      const deadline = new Date(`${lastSlot.slot_date}T${lastSlot.end_time}`);
+      if (deadline < new Date()) {
+        return res.status(400).json({ success: false, message: 'All exam slots have ended' });
+      }
     }
 
     const [existing] = await pool.execute(
@@ -388,7 +502,7 @@ exports.submitAnswer = async (req, res) => {
   }
 };
 
-// GET /exams/student/history — student's own submissions
+// GET /exams/student/history
 exports.studentHistory = async (req, res) => {
   try {
     const userId = req.session.user.id;

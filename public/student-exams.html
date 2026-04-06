@@ -6,18 +6,19 @@
   <title>LocalVault — My Exams</title>
   <link rel="stylesheet" href="/assets/style.css">
   <style>
-    .exam-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-bottom: 32px; }
+    .exam-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; margin-bottom: 32px; }
     .exam-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; transition: border-color 0.2s; }
     .exam-card:hover { border-color: var(--accent); }
     .exam-card .title { font-family: var(--font-heading); font-weight: 800; font-size: 18px; margin-bottom: 4px; }
     .exam-card .subject-badge { display: inline-block; background: var(--cyan-dim); color: var(--cyan); padding: 2px 10px; border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
-    .exam-card .due-line { font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
-    .exam-card .room-line { font-size: 12px; color: var(--cyan); margin-bottom: 8px; }
-    .exam-card .countdown { font-family: var(--font-heading); font-weight: 700; font-size: 14px; margin-bottom: 16px; }
+    .slot-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .slot-item .room { color: var(--accent); font-weight: 500; min-width: 70px; }
+    .slot-item .time { color: var(--cyan); }
+    .slot-item .countdown { font-family: var(--font-heading); font-weight: 700; font-size: 11px; margin-left: auto; }
     .countdown.urgent { color: var(--red); }
     .countdown.normal { color: var(--accent); }
     .countdown.expired { color: var(--text-muted); }
-    .sub-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; }
+    .sub-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; margin-top: 12px; }
     .sub-badge.not-submitted { background: var(--red-dim); color: var(--red); }
     .sub-badge.submitted { background: rgba(46,213,115,0.15); color: var(--green); }
     .sub-badge.closed { background: var(--surface-2); color: var(--text-muted); }
@@ -107,6 +108,17 @@
       loadHistory();
     })();
 
+    // Get the latest slot end datetime for an exam
+    function getLastDeadline(slots) {
+      if (!slots || slots.length === 0) return null;
+      let latest = null;
+      for (const s of slots) {
+        const dt = new Date(`${s.slot_date}T${s.end_time}`);
+        if (!latest || dt > latest) latest = dt;
+      }
+      return latest;
+    }
+
     async function loadExams() {
       try {
         const res = await apiFetch('/exams/student/list');
@@ -129,38 +141,51 @@
 
         container.innerHTML = exams.map(e => {
           const now = new Date();
-          const due = new Date(e.due_date);
-          const diff = due - now;
-          const isExpired = diff <= 0;
-          const isUrgent = diff > 0 && diff < 24 * 60 * 60 * 1000;
+          const deadline = getLastDeadline(e.slots);
+          const isExpired = deadline ? deadline <= now : false;
+          const allExpired = isExpired;
+
+          // Build slot list with per-slot countdown
+          const slotListHTML = (e.slots || []).map(s => {
+            const slotEnd = new Date(`${s.slot_date}T${s.end_time}`);
+            const diff = slotEnd - now;
+            const expired = diff <= 0;
+            const urgent = diff > 0 && diff < 24 * 60 * 60 * 1000;
+
+            return `<div class="slot-item">
+              <span class="room">${esc(s.room)}</span>
+              <span>${s.slot_date}</span>
+              <span class="time">${s.start_time.slice(0,5)} – ${s.end_time.slice(0,5)}</span>
+              <span class="countdown ${expired ? 'expired' : urgent ? 'urgent' : 'normal'}" data-end="${s.slot_date}T${s.end_time}">
+                ${expired ? 'Ended' : formatCountdown(diff)}
+              </span>
+            </div>`;
+          }).join('') || '<div style="color:var(--text-muted);font-size:12px">No schedule yet</div>';
 
           let statusBadge, actionBtn;
           if (e.submitted > 0) {
             statusBadge = `<span class="sub-badge submitted">Submitted</span>`;
             actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Submitted</button>`;
-          } else if (e.status === 'closed' || isExpired) {
+          } else if (e.status === 'closed' || allExpired) {
             statusBadge = `<span class="sub-badge closed">Closed</span>`;
             actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Closed</button>`;
           } else {
             statusBadge = `<span class="sub-badge not-submitted">Not Submitted</span>`;
-            actionBtn = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', '${e.due_date}')">Upload Answer</button>`;
+            actionBtn = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}')">Upload Answer</button>`;
           }
 
           return `
             <div class="exam-card">
               <div class="title">${esc(e.title)}</div>
               <span class="subject-badge">${esc(e.subject)}</span>
-              <div class="due-line">Due: ${formatDate(e.due_date)}</div>
-              ${e.room ? '<div class="room-line">Room: ' + esc(e.room) + '</div>' : ''}
-              <div class="countdown ${isExpired ? 'expired' : isUrgent ? 'urgent' : 'normal'}" data-due="${e.due_date}">
-                ${isExpired ? 'Expired' : formatCountdown(diff)}
-              </div>
+              <div style="margin:8px 0">${slotListHTML}</div>
               ${statusBadge}
               <div style="margin-top:12px">${actionBtn}</div>
             </div>
           `;
         }).join('');
 
+        // Live countdown timer
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(updateCountdowns, 1000);
 
@@ -170,22 +195,22 @@
     }
 
     function formatCountdown(ms) {
-      if (ms <= 0) return 'Expired';
+      if (ms <= 0) return 'Ended';
       const days = Math.floor(ms / (1000 * 60 * 60 * 24));
       const hrs = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const mins = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
       const secs = Math.floor((ms % (1000 * 60)) / 1000);
-      if (days > 0) return `${days}d ${hrs}h ${mins}m left`;
-      if (hrs > 0) return `${hrs}h ${mins}m ${secs}s left`;
-      return `${mins}m ${secs}s left`;
+      if (days > 0) return `${days}d ${hrs}h ${mins}m`;
+      if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+      return `${mins}m ${secs}s`;
     }
 
     function updateCountdowns() {
-      document.querySelectorAll('.countdown[data-due]').forEach(el => {
-        const due = new Date(el.dataset.due);
-        const diff = due - new Date();
+      document.querySelectorAll('.countdown[data-end]').forEach(el => {
+        const end = new Date(el.dataset.end);
+        const diff = end - new Date();
         if (diff <= 0) {
-          el.textContent = 'Expired';
+          el.textContent = 'Ended';
           el.className = 'countdown expired';
         } else {
           el.textContent = formatCountdown(diff);
@@ -198,7 +223,6 @@
       try {
         const res = await apiFetch('/exams/student/history');
         const tbody = document.getElementById('historyTable');
-
         if (res.data.length === 0) {
           tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No submissions yet</td></tr>';
         } else {
@@ -218,11 +242,12 @@
     }
 
     // ── Upload modal ──────────────────────────────────────
-    function openUploadModal(examId, title, subject, dueDate) {
+    function openUploadModal(examId, title, subject) {
       document.getElementById('uploadExamId').value = examId;
-      document.getElementById('uploadExamInfo').textContent = `${title} — ${subject} | Due: ${formatDate(dueDate)}`;
+      document.getElementById('uploadExamInfo').textContent = `${title} — ${subject}`;
       document.getElementById('selectedFileInfo').textContent = '';
       document.getElementById('submitAnswerBtn').disabled = true;
+      document.getElementById('submitAnswerBtn').textContent = 'Submit Answer';
       selectedFile = null;
       document.getElementById('answerFile').value = '';
       document.getElementById('uploadProgress').classList.remove('active');

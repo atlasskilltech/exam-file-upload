@@ -5,7 +5,6 @@ const { requireAuth, requireAdmin, requireStudent } = require('../middleware/aut
 const ctrl = require('../controllers/examController');
 const examUpload = require('../middleware/examUpload');
 
-// All exam routes require authentication
 router.use(requireAuth);
 
 // ── Admin routes ──────────────────────────────────────────
@@ -14,14 +13,19 @@ router.post('/create', requireAdmin, ctrl.createExam);
 router.put('/update/:id', requireAdmin, ctrl.updateExam);
 router.delete('/delete/:id', requireAdmin, ctrl.deleteExam);
 router.post('/:id/status', requireAdmin, ctrl.changeStatus);
+
+// Slot management
+router.get('/:id/slots', requireAdmin, ctrl.getSlots);
+router.post('/:id/slots', requireAdmin, ctrl.addSlot);
+router.delete('/slots/:slotId', requireAdmin, ctrl.deleteSlot);
+
+// Submissions
 router.get('/:id/submissions', requireAdmin, ctrl.listSubmissions);
 router.get('/submissions/download/:id', ctrl.downloadSubmission);
 router.get('/:id/submissions/export', requireAdmin, ctrl.exportCSV);
 
-// Admin helper — list all students
+// Admin helpers
 router.get('/admin/students', requireAdmin, ctrl.listStudents);
-
-// Admin — exam stats for reports page
 router.get('/admin/exam-stats', requireAdmin, ctrl.examStats);
 
 // ── Student routes ────────────────────────────────────────
