@@ -47,16 +47,8 @@
           <div class="stat-label">Submissions</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" id="statSubRate">--</div>
-          <div class="stat-label">Submission Rate</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statGraded">--</div>
-          <div class="stat-label">Graded</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statPendingGrade">--</div>
-          <div class="stat-label">Pending</div>
+          <div class="stat-value" id="statStudents">--</div>
+          <div class="stat-label">Students</div>
         </div>
       </div>
 
@@ -88,12 +80,6 @@
           <div class="card-header">Submissions per Exam</div>
           <div class="chart-container">
             <canvas id="subsPerExamChart"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">Submission Status</div>
-          <div class="chart-container">
-            <canvas id="subStatusChart"></canvas>
           </div>
         </div>
       </div>
@@ -255,9 +241,7 @@
           document.getElementById('statExams').textContent = ed.totalExams;
           document.getElementById('statActiveExams').textContent = ed.activeExams;
           document.getElementById('statSubmissions').textContent = ed.totalSubmissions;
-          document.getElementById('statSubRate').textContent = ed.submissionRate + '%';
-          document.getElementById('statGraded').textContent = ed.gradedSubmissions;
-          document.getElementById('statPendingGrade').textContent = ed.pendingSubmissions;
+          document.getElementById('statStudents').textContent = ed.totalStudents;
 
           if (typeof Chart !== 'undefined') {
             document.getElementById('examChartsGrid').style.display = '';
@@ -282,29 +266,6 @@
                     y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true }
                   },
                   plugins: { legend: { display: false } }
-                }
-              });
-            }
-
-            // Submission status doughnut
-            const statusData = [ed.pendingSubmissions, ed.gradedSubmissions, ed.rejectedSubmissions];
-            if (statusData.some(v => v > 0)) {
-              new Chart(document.getElementById('subStatusChart'), {
-                type: 'doughnut',
-                data: {
-                  labels: ['Pending', 'Graded', 'Rejected'],
-                  datasets: [{
-                    data: statusData,
-                    backgroundColor: ['#e8ff47', '#2ed573', '#ff4757'],
-                    borderColor: '#161616',
-                    borderWidth: 2
-                  }]
-                },
-                options: {
-                  responsive: true, maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: 'bottom', labels: { color: '#e0e0e0', font: { family: 'DM Mono' } } }
-                  }
                 }
               });
             }

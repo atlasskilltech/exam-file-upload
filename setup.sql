@@ -71,25 +71,7 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
   stored_name    VARCHAR(255) NOT NULL,
   mime_type      VARCHAR(100),
   size_bytes     BIGINT,
-  status         ENUM('submitted','graded','rejected') DEFAULT 'submitted',
-  marks_obtained INT DEFAULT NULL,
-  grade          VARCHAR(10) DEFAULT NULL,
-  remarks        TEXT DEFAULT NULL,
   submitted_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-  graded_at      DATETIME DEFAULT NULL,
-  graded_by      INT DEFAULT NULL,
-  FOREIGN KEY (exam_id)    REFERENCES exams(id) ON DELETE CASCADE,
-  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (graded_by)  REFERENCES users(id) ON DELETE SET NULL
-);
-
--- Exam student enrollment table
-CREATE TABLE IF NOT EXISTS exam_students (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  exam_id     INT NOT NULL,
-  student_id  INT NOT NULL,
-  enrolled_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_enroll (exam_id, student_id),
   FOREIGN KEY (exam_id)    REFERENCES exams(id) ON DELETE CASCADE,
   FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -12,10 +12,6 @@
     .exam-stat .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
     .status-active { color: var(--green); }
     .status-closed { color: var(--text-muted); }
-    .enroll-list { max-height: 300px; overflow-y: auto; }
-    .enroll-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
-    .enroll-item input[type="checkbox"] { accent-color: var(--accent); }
-    .enroll-search { margin-bottom: 12px; }
     .room-info { color: var(--cyan); font-size: 12px; }
   </style>
 </head>
@@ -25,7 +21,7 @@
       <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
         <div>
           <h1>Exam Manager</h1>
-          <p>Create and manage exams, enroll students.</p>
+          <p>Create and manage exams.</p>
         </div>
         <button class="btn btn-primary" onclick="openCreateModal()">+ Create Exam</button>
       </div>
@@ -44,13 +40,12 @@
                 <th>Due Date</th>
                 <th>Room</th>
                 <th>Status</th>
-                <th>Enrolled</th>
                 <th>Submissions</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="examsTable">
-              <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+              <tr><td colspan="8" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -88,26 +83,8 @@
     </div>
   </div>
 
-  <!-- Enroll Students Modal -->
-  <div class="modal-overlay" id="enrollModal">
-    <div class="modal" style="max-width:480px">
-      <h3>Enroll Students — <span id="enrollExamTitle"></span></h3>
-      <input type="text" class="form-control enroll-search" id="enrollSearch" placeholder="Search students...">
-      <div class="enroll-list" id="enrollList"></div>
-      <input type="hidden" id="enrollExamId">
-      <div style="margin-top:12px;font-size:12px;color:var(--text-muted)" id="enrollCount"></div>
-      <div class="modal-actions" style="margin-top:16px">
-        <button class="btn btn-secondary" onclick="closeEnrollModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveEnrollment()">Save Enrollment</button>
-      </div>
-    </div>
-  </div>
-
   <script src="/assets/app.js"></script>
   <script>
-    let allStudents = [];
-    let enrolledIds = [];
-
     (async () => {
       const user = await checkAuth();
       if (!user) return;
@@ -127,7 +104,6 @@
         const exams = res.data;
         const tbody = document.getElementById('examsTable');
 
-        // Stats
         const total = exams.length;
         const active = exams.filter(e => e.status === 'active').length;
         const closed = total - active;
@@ -141,7 +117,7 @@
         `;
 
         if (exams.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No exams yet. Create one to get started.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No exams yet. Create one to get started.</td></tr>';
         } else {
           tbody.innerHTML = exams.map((e, i) => `
             <tr>
@@ -151,14 +127,12 @@
               <td>${formatDate(e.due_date)}</td>
               <td>${e.room ? '<span class="room-info">' + esc(e.room) + '</span>' : '—'}</td>
               <td><span class="status-${e.status}">${e.status}</span></td>
-              <td>${e.enrolled_count || 0}</td>
               <td>${e.submission_count || 0}</td>
               <td style="white-space:nowrap">
-                <button class="btn btn-secondary btn-sm" onclick="openEnrollModal(${e.id}, '${escAttr(e.title)}')" title="Enroll Students">Enroll</button>
-                <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm" title="View Submissions">View</a>
-                <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', '${e.due_date}', '${escAttr(e.room || '')}')" title="Edit">Edit</button>
-                <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')" title="Toggle Status">${e.status === 'active' ? 'Close' : 'Open'}</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteExam(${e.id}, '${escAttr(e.title)}')" title="Delete">Del</button>
+                <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm">View</a>
+                <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', '${e.due_date}', '${escAttr(e.room || '')}')">Edit</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')">${e.status === 'active' ? 'Close' : 'Open'}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteExam(${e.id}, '${escAttr(e.title)}')">Del</button>
               </td>
             </tr>
           `).join('');
@@ -170,13 +144,11 @@
       overlay.classList.remove('active');
     }
 
-    // ── Create/Edit modal ─────────────────────────────────
     function openCreateModal() {
       document.getElementById('examModalTitle').textContent = 'Create Exam';
       document.getElementById('examSubmitBtn').textContent = 'Create Exam';
       document.getElementById('examEditId').value = '';
       document.getElementById('examForm').reset();
-      // Set min date to now
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       document.getElementById('examDueDate').min = now.toISOString().slice(0, 16);
@@ -189,7 +161,6 @@
       document.getElementById('examEditId').value = id;
       document.getElementById('examTitle').value = title;
       document.getElementById('examSubject').value = subject;
-      // Format due_date for datetime-local input
       const d = new Date(dueDate);
       d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
       document.getElementById('examDueDate').value = d.toISOString().slice(0, 16);
@@ -226,7 +197,6 @@
       }
     });
 
-    // ── Status toggle ─────────────────────────────────────
     async function toggleStatus(id, newStatus) {
       try {
         await apiFetch(`/exams/${id}/status`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
@@ -235,7 +205,6 @@
       } catch (err) { showToast(err.message, 'error'); }
     }
 
-    // ── Delete exam ───────────────────────────────────────
     async function deleteExam(id, title) {
       const ok = await showConfirm(`Delete exam "${title}" and all its submissions?`);
       if (!ok) return;
@@ -244,92 +213,6 @@
         showToast('Exam deleted');
         loadExams();
       } catch (err) { showToast(err.message, 'error'); }
-    }
-
-    // ── Enroll modal ──────────────────────────────────────
-    async function openEnrollModal(examId, examTitle) {
-      document.getElementById('enrollExamTitle').textContent = examTitle;
-      document.getElementById('enrollExamId').value = examId;
-      document.getElementById('enrollModal').classList.add('active');
-
-      // Fetch all students
-      try {
-        const studRes = await apiFetch('/exams/admin/students');
-        allStudents = studRes.data;
-      } catch { allStudents = []; }
-
-      // Fetch current enrollment
-      try {
-        const subRes = await apiFetch(`/exams/${examId}/submissions`);
-        enrolledIds = subRes.data.enrolled.map(e => e.student_id);
-      } catch { enrolledIds = []; }
-
-      renderEnrollList('');
-
-      document.getElementById('enrollSearch').value = '';
-      document.getElementById('enrollSearch').oninput = (e) => renderEnrollList(e.target.value);
-    }
-
-    function renderEnrollList(filter) {
-      const list = document.getElementById('enrollList');
-      const filtered = allStudents.filter(s =>
-        s.username.toLowerCase().includes(filter.toLowerCase())
-      );
-
-      list.innerHTML = filtered.map(s => `
-        <label class="enroll-item">
-          <input type="checkbox" value="${s.id}" ${enrolledIds.includes(s.id) ? 'checked' : ''}
-                 onchange="toggleEnrollCheck(${s.id}, this.checked)">
-          <span>${esc(s.username)}</span>
-        </label>
-      `).join('');
-
-      document.getElementById('enrollCount').textContent =
-        `${enrolledIds.length} student(s) selected`;
-    }
-
-    function toggleEnrollCheck(id, checked) {
-      if (checked && !enrolledIds.includes(id)) enrolledIds.push(id);
-      if (!checked) enrolledIds = enrolledIds.filter(i => i !== id);
-      document.getElementById('enrollCount').textContent =
-        `${enrolledIds.length} student(s) selected`;
-    }
-
-    function closeEnrollModal() {
-      document.getElementById('enrollModal').classList.remove('active');
-    }
-
-    async function saveEnrollment() {
-      const examId = document.getElementById('enrollExamId').value;
-
-      // First unenroll everyone, then re-enroll selected
-      // Simpler: just enroll selected (INSERT IGNORE handles duplicates)
-      try {
-        // Get current enrolled
-        const subRes = await apiFetch(`/exams/${examId}/submissions`);
-        const currentEnrolled = subRes.data.enrolled.map(e => e.student_id);
-
-        // Unenroll those not in new list
-        for (const sid of currentEnrolled) {
-          if (!enrolledIds.includes(sid)) {
-            await apiFetch(`/exams/${examId}/unenroll/${sid}`, { method: 'DELETE' });
-          }
-        }
-
-        // Enroll new ones
-        if (enrolledIds.length > 0) {
-          await apiFetch(`/exams/${examId}/enroll`, {
-            method: 'POST',
-            body: JSON.stringify({ student_ids: enrolledIds })
-          });
-        }
-
-        showToast('Enrollment saved');
-        closeEnrollModal();
-        loadExams();
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
     }
 
     function esc(str) {

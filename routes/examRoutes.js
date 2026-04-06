@@ -14,15 +14,11 @@ router.post('/create', requireAdmin, ctrl.createExam);
 router.put('/update/:id', requireAdmin, ctrl.updateExam);
 router.delete('/delete/:id', requireAdmin, ctrl.deleteExam);
 router.post('/:id/status', requireAdmin, ctrl.changeStatus);
-router.post('/:id/enroll', requireAdmin, ctrl.enrollStudents);
-router.delete('/:id/unenroll/:sid', requireAdmin, ctrl.unenrollStudent);
 router.get('/:id/submissions', requireAdmin, ctrl.listSubmissions);
 router.get('/submissions/download/:id', ctrl.downloadSubmission);
-router.post('/submissions/grade/:id', requireAdmin, ctrl.gradeSubmission);
-router.post('/submissions/reject/:id', requireAdmin, ctrl.rejectSubmission);
 router.get('/:id/submissions/export', requireAdmin, ctrl.exportCSV);
 
-// Admin helper — list all students for enrollment
+// Admin helper — list all students
 router.get('/admin/students', requireAdmin, ctrl.listStudents);
 
 // Admin — exam stats for reports page

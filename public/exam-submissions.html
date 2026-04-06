@@ -14,10 +14,8 @@
     .sub-stat { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 16px; text-align: center; min-width: 80px; }
     .sub-stat .v { font-family: var(--font-heading); font-weight: 700; font-size: 20px; }
     .sub-stat .l { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
-    .status-submitted { color: var(--accent); }
-    .status-graded { color: var(--green); }
-    .status-rejected { color: var(--red); }
-    .grade-preview { font-family: var(--font-heading); font-weight: 700; font-size: 18px; margin-top: 8px; color: var(--cyan); }
+    .status-active { color: var(--green); }
+    .status-closed { color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -44,57 +42,16 @@
                 <th>File Name</th>
                 <th>Size</th>
                 <th>Submitted At</th>
-                <th>Status</th>
-                <th>Marks</th>
-                <th>Grade</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="subsTable">
-              <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+              <tr><td colspan="6" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
         </div>
       </div>
     </main>
-  </div>
-
-  <!-- Grade Modal -->
-  <div class="modal-overlay" id="gradeModal">
-    <div class="modal" style="max-width:440px">
-      <h3>Grade Submission</h3>
-      <p style="color:var(--text-muted);font-size:13px" id="gradeInfo"></p>
-      <div class="form-group">
-        <label>Marks Obtained (out of 100)</label>
-        <input type="number" class="form-control" id="gradeMarks" min="0" max="100" required>
-      </div>
-      <div class="grade-preview" id="gradePreview">—</div>
-      <div class="form-group" style="margin-top:12px">
-        <label>Remarks (optional)</label>
-        <textarea class="form-control" id="gradeRemarks" rows="2"></textarea>
-      </div>
-      <input type="hidden" id="gradeSubId">
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeGradeModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveGrade()">Save Grade</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Reject Modal -->
-  <div class="modal-overlay" id="rejectModal">
-    <div class="modal" style="max-width:440px">
-      <h3>Reject Submission</h3>
-      <div class="form-group">
-        <label>Reason / Remarks</label>
-        <textarea class="form-control" id="rejectRemarks" rows="3" required></textarea>
-      </div>
-      <input type="hidden" id="rejectSubId">
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeRejectModal()">Cancel</button>
-        <button class="btn btn-danger" onclick="saveReject()">Confirm Reject</button>
-      </div>
-    </div>
   </div>
 
   <script src="/assets/app.js"></script>
@@ -120,13 +77,9 @@
 
       try {
         const res = await apiFetch(`/exams/${examId}/submissions`);
-        const { exam, submissions, enrolled } = res.data;
+        const { exam, submissions } = res.data;
 
         document.getElementById('pageTitle').textContent = `Submissions — ${exam.title}`;
-
-        const graded = submissions.filter(s => s.status === 'graded').length;
-        const pending = submissions.filter(s => s.status === 'submitted').length;
-        const rejected = submissions.filter(s => s.status === 'rejected').length;
 
         document.getElementById('examBanner').innerHTML = `
           <div>
@@ -139,17 +92,13 @@
             </div>
           </div>
           <div class="sub-stats">
-            <div class="sub-stat"><div class="v">${enrolled.length}</div><div class="l">Enrolled</div></div>
             <div class="sub-stat"><div class="v" style="color:var(--accent)">${submissions.length}</div><div class="l">Submitted</div></div>
-            <div class="sub-stat"><div class="v" style="color:var(--green)">${graded}</div><div class="l">Graded</div></div>
-            <div class="sub-stat"><div class="v">${pending}</div><div class="l">Pending</div></div>
-            <div class="sub-stat"><div class="v" style="color:var(--red)">${rejected}</div><div class="l">Rejected</div></div>
           </div>
         `;
 
         const tbody = document.getElementById('subsTable');
         if (submissions.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No submissions yet</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No submissions yet</td></tr>';
         } else {
           tbody.innerHTML = submissions.map((s, i) => `
             <tr>
@@ -158,13 +107,8 @@
               <td>${esc(s.original_name)}</td>
               <td>${formatSize(s.size_bytes)}</td>
               <td>${formatDate(s.submitted_at)}</td>
-              <td><span class="status-${s.status}">${s.status}</span></td>
-              <td>${s.marks_obtained !== null ? s.marks_obtained : '—'}</td>
-              <td>${s.grade || '—'}</td>
-              <td style="white-space:nowrap">
+              <td>
                 <a href="/exams/submissions/download/${s.id}" class="btn btn-secondary btn-sm">Download</a>
-                <button class="btn btn-primary btn-sm" onclick="openGradeModal(${s.id}, '${escAttr(s.student_name)}')">Grade</button>
-                <button class="btn btn-danger btn-sm" onclick="openRejectModal(${s.id})">Reject</button>
               </td>
             </tr>
           `).join('');
@@ -176,81 +120,6 @@
       overlay.classList.remove('active');
     }
 
-    // ── Grade modal ───────────────────────────────────────
-    function openGradeModal(subId, studentName) {
-      document.getElementById('gradeSubId').value = subId;
-      document.getElementById('gradeInfo').textContent = `Student: ${studentName}`;
-      document.getElementById('gradeMarks').value = '';
-      document.getElementById('gradeRemarks').value = '';
-      document.getElementById('gradePreview').textContent = '—';
-      document.getElementById('gradeModal').classList.add('active');
-    }
-
-    function closeGradeModal() {
-      document.getElementById('gradeModal').classList.remove('active');
-    }
-
-    // Live grade preview
-    document.getElementById('gradeMarks').addEventListener('input', (e) => {
-      const marks = parseInt(e.target.value);
-      if (isNaN(marks)) { document.getElementById('gradePreview').textContent = '—'; return; }
-      const pct = (marks / 100) * 100;
-      let grade = 'F';
-      if (pct >= 90) grade = 'A+';
-      else if (pct >= 80) grade = 'A';
-      else if (pct >= 70) grade = 'B';
-      else if (pct >= 60) grade = 'C';
-      else if (pct >= 50) grade = 'D';
-      document.getElementById('gradePreview').textContent = `Grade: ${grade} (${marks}/100)`;
-    });
-
-    async function saveGrade() {
-      const subId = document.getElementById('gradeSubId').value;
-      const marks = document.getElementById('gradeMarks').value;
-      const remarks = document.getElementById('gradeRemarks').value;
-
-      if (!marks && marks !== 0) { showToast('Enter marks', 'error'); return; }
-
-      try {
-        await apiFetch(`/exams/submissions/grade/${subId}`, {
-          method: 'POST',
-          body: JSON.stringify({ marks_obtained: parseInt(marks), remarks })
-        });
-        showToast('Submission graded');
-        closeGradeModal();
-        loadSubmissions();
-      } catch (err) { showToast(err.message, 'error'); }
-    }
-
-    // ── Reject modal ──────────────────────────────────────
-    function openRejectModal(subId) {
-      document.getElementById('rejectSubId').value = subId;
-      document.getElementById('rejectRemarks').value = '';
-      document.getElementById('rejectModal').classList.add('active');
-    }
-
-    function closeRejectModal() {
-      document.getElementById('rejectModal').classList.remove('active');
-    }
-
-    async function saveReject() {
-      const subId = document.getElementById('rejectSubId').value;
-      const remarks = document.getElementById('rejectRemarks').value;
-
-      if (!remarks.trim()) { showToast('Enter a reason', 'error'); return; }
-
-      try {
-        await apiFetch(`/exams/submissions/reject/${subId}`, {
-          method: 'POST',
-          body: JSON.stringify({ remarks })
-        });
-        showToast('Submission rejected');
-        closeRejectModal();
-        loadSubmissions();
-      } catch (err) { showToast(err.message, 'error'); }
-    }
-
-    // ── Export CSV ────────────────────────────────────────
     function exportCSV() {
       window.location.href = `/exams/${examId}/submissions/export`;
     }
@@ -259,9 +128,6 @@
       const d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
-    }
-    function escAttr(str) {
-      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     }
   </script>
 </body>

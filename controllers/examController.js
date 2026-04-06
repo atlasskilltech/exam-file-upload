@@ -1,8 +1,8 @@
 // Exam controller — admin exam management + student submissions
+// No enrollment, no grading — students see all active exams and submit files
 const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
-const calcGrade = require('../utils/gradeCalc');
 
 // ════════════════════════════════════════════════════════════
 // ADMIN ENDPOINTS
@@ -13,8 +13,7 @@ exports.listExams = async (req, res) => {
   try {
     const [rows] = await pool.execute(`
       SELECT e.*, u.username AS created_by_name,
-        (SELECT COUNT(*) FROM exam_submissions WHERE exam_id = e.id) AS submission_count,
-        (SELECT COUNT(*) FROM exam_students WHERE exam_id = e.id) AS enrolled_count
+        (SELECT COUNT(*) FROM exam_submissions WHERE exam_id = e.id) AS submission_count
       FROM exams e
       LEFT JOIN users u ON e.created_by = u.id
       ORDER BY e.created_at DESC
@@ -36,7 +35,6 @@ exports.createExam = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Title, subject, and due date are required' });
     }
 
-    // Due date must be in the future
     if (new Date(due_date) <= new Date()) {
       return res.status(400).json({ success: false, message: 'Due date must be in the future' });
     }
@@ -106,7 +104,6 @@ exports.deleteExam = async (req, res) => {
       fs.rmSync(examDir, { recursive: true, force: true });
     }
 
-    // CASCADE handles submissions + enrollment
     await pool.execute('DELETE FROM exams WHERE id = ?', [examId]);
 
     await pool.execute(
@@ -140,64 +137,11 @@ exports.changeStatus = async (req, res) => {
   }
 };
 
-// POST /exams/:id/enroll
-exports.enrollStudents = async (req, res) => {
-  try {
-    const examId = req.params.id;
-    const { student_ids } = req.body;
-
-    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
-      return res.status(400).json({ success: false, message: 'Provide an array of student IDs' });
-    }
-
-    // Validate all IDs are students
-    const placeholders = student_ids.map(() => '?').join(',');
-    const [students] = await pool.execute(
-      `SELECT id FROM users WHERE id IN (${placeholders}) AND role = 'student'`,
-      student_ids
-    );
-
-    const validIds = students.map(s => s.id);
-    let enrolled = 0;
-
-    for (const sid of validIds) {
-      try {
-        await pool.execute(
-          'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
-          [examId, sid]
-        );
-        enrolled++;
-      } catch { /* duplicate, skip */ }
-    }
-
-    return res.json({ success: true, data: { enrolled } });
-  } catch (err) {
-    console.error('Enroll error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to enroll students' });
-  }
-};
-
-// DELETE /exams/:id/unenroll/:sid
-exports.unenrollStudent = async (req, res) => {
-  try {
-    const { id, sid } = req.params;
-    await pool.execute(
-      'DELETE FROM exam_students WHERE exam_id = ? AND student_id = ?',
-      [id, sid]
-    );
-    return res.json({ success: true, message: 'Student unenrolled' });
-  } catch (err) {
-    console.error('Unenroll error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to unenroll student' });
-  }
-};
-
-// GET /exams/:id/submissions
+// GET /exams/:id/submissions — view all submissions for an exam
 exports.listSubmissions = async (req, res) => {
   try {
     const examId = req.params.id;
 
-    // Get exam info
     const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
     if (exams.length === 0) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
@@ -211,17 +155,9 @@ exports.listSubmissions = async (req, res) => {
       ORDER BY es.submitted_at DESC
     `, [examId]);
 
-    // Get enrolled students
-    const [enrolled] = await pool.execute(`
-      SELECT es.student_id, u.username
-      FROM exam_students es
-      LEFT JOIN users u ON es.student_id = u.id
-      WHERE es.exam_id = ?
-    `, [examId]);
-
     return res.json({
       success: true,
-      data: { exam: exams[0], submissions, enrolled }
+      data: { exam: exams[0], submissions }
     });
   } catch (err) {
     console.error('List submissions error:', err);
@@ -229,7 +165,7 @@ exports.listSubmissions = async (req, res) => {
   }
 };
 
-// GET /exams/submissions/download/:id
+// GET /exams/submissions/download/:id — download a submission file
 exports.downloadSubmission = async (req, res) => {
   try {
     const subId = req.params.id;
@@ -266,75 +202,7 @@ exports.downloadSubmission = async (req, res) => {
   }
 };
 
-// POST /exams/submissions/grade/:id
-exports.gradeSubmission = async (req, res) => {
-  try {
-    const subId = req.params.id;
-    const { marks_obtained, remarks } = req.body;
-
-    if (marks_obtained === undefined || marks_obtained === null) {
-      return res.status(400).json({ success: false, message: 'Marks are required' });
-    }
-
-    const [subs] = await pool.execute(
-      'SELECT es.*, e.title FROM exam_submissions es LEFT JOIN exams e ON es.exam_id = e.id WHERE es.id = ?',
-      [subId]
-    );
-    if (subs.length === 0) {
-      return res.status(404).json({ success: false, message: 'Submission not found' });
-    }
-
-    const marks = parseInt(marks_obtained);
-    // Auto-calculate grade (assume 100 as max if no total defined)
-    const grade = calcGrade(marks, 100);
-
-    await pool.execute(
-      `UPDATE exam_submissions SET marks_obtained = ?, grade = ?, remarks = ?,
-       status = 'graded', graded_at = NOW(), graded_by = ? WHERE id = ?`,
-      [marks, grade, remarks || null, req.session.user.id, subId]
-    );
-
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [req.session.user.id, 'graded submission', subs[0].title + ' - ' + subs[0].original_name]
-    );
-
-    return res.json({ success: true, data: { marks, grade } });
-  } catch (err) {
-    console.error('Grade submission error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to grade submission' });
-  }
-};
-
-// POST /exams/submissions/reject/:id
-exports.rejectSubmission = async (req, res) => {
-  try {
-    const subId = req.params.id;
-    const { remarks } = req.body;
-
-    const [subs] = await pool.execute('SELECT * FROM exam_submissions WHERE id = ?', [subId]);
-    if (subs.length === 0) {
-      return res.status(404).json({ success: false, message: 'Submission not found' });
-    }
-
-    await pool.execute(
-      "UPDATE exam_submissions SET status = 'rejected', remarks = ? WHERE id = ?",
-      [remarks || 'Rejected', subId]
-    );
-
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [req.session.user.id, 'rejected submission', subs[0].original_name]
-    );
-
-    return res.json({ success: true, message: 'Submission rejected' });
-  } catch (err) {
-    console.error('Reject submission error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to reject submission' });
-  }
-};
-
-// GET /exams/:id/submissions/export
+// GET /exams/:id/submissions/export — export CSV
 exports.exportCSV = async (req, res) => {
   try {
     const examId = req.params.id;
@@ -346,29 +214,25 @@ exports.exportCSV = async (req, res) => {
 
     const [rows] = await pool.execute(`
       SELECT u.username AS student, es.original_name AS file,
-             es.submitted_at, es.status, es.marks_obtained, es.grade, es.remarks
+             es.submitted_at, es.size_bytes
       FROM exam_submissions es
       LEFT JOIN users u ON es.student_id = u.id
       WHERE es.exam_id = ?
       ORDER BY u.username
     `, [examId]);
 
-    // Build CSV
-    let csv = 'Student,File,Submitted At,Status,Marks,Grade,Remarks\n';
+    let csv = 'Student,File,Submitted At,Size\n';
     for (const r of rows) {
       csv += [
         r.student,
         `"${(r.file || '').replace(/"/g, '""')}"`,
         r.submitted_at,
-        r.status,
-        r.marks_obtained || '',
-        r.grade || '',
-        `"${(r.remarks || '').replace(/"/g, '""')}"`
+        r.size_bytes
       ].join(',') + '\n';
     }
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=exam_${examId}_results.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=exam_${examId}_submissions.csv`);
     return res.send(csv);
   } catch (err) {
     console.error('Export CSV error:', err);
@@ -376,7 +240,7 @@ exports.exportCSV = async (req, res) => {
   }
 };
 
-// GET /admin/students — list all students (for enrollment UI)
+// GET /admin/students — list all student accounts
 exports.listStudents = async (req, res) => {
   try {
     const [rows] = await pool.execute(
@@ -389,28 +253,55 @@ exports.listStudents = async (req, res) => {
   }
 };
 
+// GET /admin/exam-stats — exam overview for reports
+exports.examStats = async (req, res) => {
+  try {
+    const [totalExams] = await pool.execute('SELECT COUNT(*) AS count FROM exams');
+    const [activeExams] = await pool.execute("SELECT COUNT(*) AS count FROM exams WHERE status = 'active'");
+    const [closedExams] = await pool.execute("SELECT COUNT(*) AS count FROM exams WHERE status = 'closed'");
+    const [totalSubs] = await pool.execute('SELECT COUNT(*) AS count FROM exam_submissions');
+    const [totalStudents] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'student'");
+
+    // Submissions per exam
+    const [subsPerExam] = await pool.execute(`
+      SELECT e.title, COUNT(es.id) AS count
+      FROM exams e LEFT JOIN exam_submissions es ON e.id = es.exam_id
+      GROUP BY e.id ORDER BY count DESC LIMIT 10
+    `);
+
+    return res.json({
+      success: true,
+      data: {
+        totalExams: totalExams[0].count,
+        activeExams: activeExams[0].count,
+        closedExams: closedExams[0].count,
+        totalSubmissions: totalSubs[0].count,
+        totalStudents: totalStudents[0].count,
+        subsPerExam
+      }
+    });
+  } catch (err) {
+    console.error('Exam stats error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch exam stats' });
+  }
+};
+
 // ════════════════════════════════════════════════════════════
 // STUDENT ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams/student/list — exams assigned to this student
+// GET /exams/student/list — all active exams visible to students
 exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
     const [exams] = await pool.execute(`
-      SELECT e.*, es_enroll.enrolled_at,
+      SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
-        (SELECT sub.status FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_status,
-        (SELECT sub.marks_obtained FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS marks_obtained,
-        (SELECT sub.grade FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS grade,
-        (SELECT sub.remarks FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS remarks,
         (SELECT sub.id FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_id
       FROM exams e
-      INNER JOIN exam_students es_enroll ON e.id = es_enroll.exam_id
-      WHERE es_enroll.student_id = ?
       ORDER BY e.due_date ASC
-    `, [userId, userId, userId, userId, userId, userId, userId]);
+    `, [userId, userId]);
 
     return res.json({ success: true, data: exams });
   } catch (err) {
@@ -419,27 +310,17 @@ exports.studentExamList = async (req, res) => {
   }
 };
 
-// GET /exams/student/:id — single exam detail for student
+// GET /exams/student/:id — single exam detail
 exports.studentExamDetail = async (req, res) => {
   try {
     const examId = req.params.id;
     const userId = req.session.user.id;
-
-    // Verify enrollment
-    const [enrolled] = await pool.execute(
-      'SELECT * FROM exam_students WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
-    if (enrolled.length === 0) {
-      return res.status(403).json({ success: false, message: 'You are not enrolled in this exam' });
-    }
 
     const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
     if (exams.length === 0) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
-    // Get student's submission if exists
     const [subs] = await pool.execute(
       'SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
       [examId, userId]
@@ -455,13 +336,12 @@ exports.studentExamDetail = async (req, res) => {
   }
 };
 
-// POST /exams/student/:id/submit — upload answer
+// POST /exams/student/:id/submit — upload answer file
 exports.submitAnswer = async (req, res) => {
   try {
     const examId = req.params.id;
     const userId = req.session.user.id;
 
-    // Check exam exists
     const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
     if (exams.length === 0) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
@@ -469,26 +349,14 @@ exports.submitAnswer = async (req, res) => {
 
     const exam = exams[0];
 
-    // Check exam is active
     if (exam.status !== 'active') {
       return res.status(400).json({ success: false, message: 'Exam is closed, submissions not accepted' });
     }
 
-    // Check enrollment
-    const [enrolled] = await pool.execute(
-      'SELECT * FROM exam_students WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
-    if (enrolled.length === 0) {
-      return res.status(403).json({ success: false, message: 'You are not enrolled in this exam' });
-    }
-
-    // Check due date
     if (new Date(exam.due_date) < new Date()) {
       return res.status(400).json({ success: false, message: 'Due date has passed' });
     }
 
-    // Check no existing submission
     const [existing] = await pool.execute(
       'SELECT id FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
       [examId, userId]
@@ -497,7 +365,6 @@ exports.submitAnswer = async (req, res) => {
       return res.status(409).json({ success: false, message: 'You have already submitted for this exam' });
     }
 
-    // File should be uploaded by multer
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
@@ -521,7 +388,7 @@ exports.submitAnswer = async (req, res) => {
   }
 };
 
-// GET /exams/student/history — all submissions by this student
+// GET /exams/student/history — student's own submissions
 exports.studentHistory = async (req, res) => {
   try {
     const userId = req.session.user.id;
@@ -538,47 +405,5 @@ exports.studentHistory = async (req, res) => {
   } catch (err) {
     console.error('Student history error:', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch history' });
-  }
-};
-
-// GET /admin/exam-stats — exam overview for reports
-exports.examStats = async (req, res) => {
-  try {
-    const [totalExams] = await pool.execute('SELECT COUNT(*) AS count FROM exams');
-    const [activeExams] = await pool.execute("SELECT COUNT(*) AS count FROM exams WHERE status = 'active'");
-    const [closedExams] = await pool.execute("SELECT COUNT(*) AS count FROM exams WHERE status = 'closed'");
-    const [totalSubs] = await pool.execute('SELECT COUNT(*) AS count FROM exam_submissions');
-    const [totalEnrolled] = await pool.execute('SELECT COUNT(*) AS count FROM exam_students');
-    const [gradedSubs] = await pool.execute("SELECT COUNT(*) AS count FROM exam_submissions WHERE status = 'graded'");
-    const [pendingSubs] = await pool.execute("SELECT COUNT(*) AS count FROM exam_submissions WHERE status = 'submitted'");
-    const [rejectedSubs] = await pool.execute("SELECT COUNT(*) AS count FROM exam_submissions WHERE status = 'rejected'");
-
-    // Submissions per exam
-    const [subsPerExam] = await pool.execute(`
-      SELECT e.title, COUNT(es.id) AS count
-      FROM exams e LEFT JOIN exam_submissions es ON e.id = es.exam_id
-      GROUP BY e.id ORDER BY count DESC LIMIT 10
-    `);
-
-    return res.json({
-      success: true,
-      data: {
-        totalExams: totalExams[0].count,
-        activeExams: activeExams[0].count,
-        closedExams: closedExams[0].count,
-        totalSubmissions: totalSubs[0].count,
-        totalEnrolled: totalEnrolled[0].count,
-        gradedSubmissions: gradedSubs[0].count,
-        pendingSubmissions: pendingSubs[0].count,
-        rejectedSubmissions: rejectedSubs[0].count,
-        submissionRate: totalEnrolled[0].count > 0
-          ? Math.round((totalSubs[0].count / totalEnrolled[0].count) * 100)
-          : 0,
-        subsPerExam
-      }
-    });
-  } catch (err) {
-    console.error('Exam stats error:', err);
-    return res.status(500).json({ success: false, message: 'Failed to fetch exam stats' });
   }
 };

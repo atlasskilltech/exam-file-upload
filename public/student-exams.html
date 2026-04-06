@@ -19,12 +19,8 @@
     .countdown.expired { color: var(--text-muted); }
     .sub-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; }
     .sub-badge.not-submitted { background: var(--red-dim); color: var(--red); }
-    .sub-badge.submitted { background: var(--accent-dim); color: var(--accent); }
-    .sub-badge.graded { background: rgba(46,213,115,0.15); color: var(--green); }
-    .sub-badge.rejected { background: var(--red-dim); color: var(--red); }
+    .sub-badge.submitted { background: rgba(46,213,115,0.15); color: var(--green); }
     .sub-badge.closed { background: var(--surface-2); color: var(--text-muted); }
-    .grade-display { margin-top: 8px; font-family: var(--font-heading); font-weight: 700; font-size: 16px; color: var(--green); }
-    .remarks-display { margin-top: 4px; font-size: 12px; color: var(--text-muted); font-style: italic; }
     .student-stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
     .student-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; text-align: center; flex: 1; min-width: 100px; }
     .student-stat .val { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent); }
@@ -39,7 +35,7 @@
     <main class="main-content">
       <div class="page-header">
         <h1>My Exams</h1>
-        <p>View assigned exams and submit your answers.</p>
+        <p>View exams and submit your answers.</p>
       </div>
 
       <div class="student-stats" id="studentStats"></div>
@@ -58,14 +54,10 @@
                 <th>Subject</th>
                 <th>File</th>
                 <th>Submitted</th>
-                <th>Status</th>
-                <th>Marks</th>
-                <th>Grade</th>
-                <th>Remarks</th>
               </tr>
             </thead>
             <tbody id="historyTable">
-              <tr><td colspan="8" class="empty-state">Loading...</td></tr>
+              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -120,22 +112,18 @@
         const res = await apiFetch('/exams/student/list');
         const exams = res.data;
 
-        // Stats
         const assigned = exams.length;
         const submitted = exams.filter(e => e.submitted > 0).length;
-        const graded = exams.filter(e => e.submission_status === 'graded').length;
-        const pending = submitted - graded;
 
         document.getElementById('studentStats').innerHTML = `
-          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Assigned</div></div>
-          <div class="student-stat"><div class="val" style="color:var(--cyan)">${submitted}</div><div class="lbl">Submitted</div></div>
-          <div class="student-stat"><div class="val" style="color:var(--green)">${graded}</div><div class="lbl">Graded</div></div>
-          <div class="student-stat"><div class="val">${pending > 0 ? pending : 0}</div><div class="lbl">Pending</div></div>
+          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Total Exams</div></div>
+          <div class="student-stat"><div class="val" style="color:var(--green)">${submitted}</div><div class="lbl">Submitted</div></div>
+          <div class="student-stat"><div class="val" style="color:var(--red)">${assigned - submitted}</div><div class="lbl">Pending</div></div>
         `;
 
         const container = document.getElementById('examCards');
         if (exams.length === 0) {
-          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams assigned to you yet.</p></div>';
+          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams available yet.</p></div>';
           return;
         }
 
@@ -147,13 +135,7 @@
           const isUrgent = diff > 0 && diff < 24 * 60 * 60 * 1000;
 
           let statusBadge, actionBtn;
-          if (e.submission_status === 'graded') {
-            statusBadge = `<span class="sub-badge graded">Graded</span>`;
-            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Submitted</button>`;
-          } else if (e.submission_status === 'rejected') {
-            statusBadge = `<span class="sub-badge rejected">Rejected</span>`;
-            actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Rejected</button>`;
-          } else if (e.submitted > 0) {
+          if (e.submitted > 0) {
             statusBadge = `<span class="sub-badge submitted">Submitted</span>`;
             actionBtn = `<button class="btn btn-secondary btn-sm" disabled>Submitted</button>`;
           } else if (e.status === 'closed' || isExpired) {
@@ -174,14 +156,11 @@
                 ${isExpired ? 'Expired' : formatCountdown(diff)}
               </div>
               ${statusBadge}
-              ${e.submission_status === 'graded' ? `<div class="grade-display">${e.marks_obtained}/100 — Grade: ${e.grade}</div>` : ''}
-              ${e.remarks ? `<div class="remarks-display">${esc(e.remarks)}</div>` : ''}
               <div style="margin-top:12px">${actionBtn}</div>
             </div>
           `;
         }).join('');
 
-        // Start live countdown
         if (countdownInterval) clearInterval(countdownInterval);
         countdownInterval = setInterval(updateCountdowns, 1000);
 
@@ -221,7 +200,7 @@
         const tbody = document.getElementById('historyTable');
 
         if (res.data.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No submissions yet</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No submissions yet</td></tr>';
         } else {
           tbody.innerHTML = res.data.map(s => `
             <tr>
@@ -229,16 +208,12 @@
               <td>${esc(s.exam_subject)}</td>
               <td>${esc(s.original_name)}</td>
               <td>${formatDate(s.submitted_at)}</td>
-              <td><span class="status-${s.status}">${s.status}</span></td>
-              <td>${s.marks_obtained !== null ? s.marks_obtained : '—'}</td>
-              <td>${s.grade || '—'}</td>
-              <td>${esc(s.remarks || '—')}</td>
             </tr>
           `).join('');
         }
       } catch {
         document.getElementById('historyTable').innerHTML =
-          '<tr><td colspan="8" class="empty-state">Failed to load history</td></tr>';
+          '<tr><td colspan="4" class="empty-state">Failed to load history</td></tr>';
       }
     }
 
@@ -259,7 +234,6 @@
       document.getElementById('uploadModal').classList.remove('active');
     }
 
-    // Upload zone interactions
     const uploadZone = document.getElementById('uploadZone');
     const answerFileInput = document.getElementById('answerFile');
 
@@ -269,15 +243,11 @@
     uploadZone.addEventListener('drop', (e) => {
       e.preventDefault();
       uploadZone.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) {
-        selectFile(e.dataTransfer.files[0]);
-      }
+      if (e.dataTransfer.files.length > 0) selectFile(e.dataTransfer.files[0]);
     });
 
     answerFileInput.addEventListener('change', () => {
-      if (answerFileInput.files.length > 0) {
-        selectFile(answerFileInput.files[0]);
-      }
+      if (answerFileInput.files.length > 0) selectFile(answerFileInput.files[0]);
     });
 
     function selectFile(file) {
@@ -286,7 +256,6 @@
       document.getElementById('submitAnswerBtn').disabled = false;
     }
 
-    // Submit answer
     document.getElementById('submitAnswerBtn').addEventListener('click', () => {
       if (!selectedFile) return;
 
