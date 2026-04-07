@@ -3,6 +3,7 @@
 const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
+const fsp = fs.promises;
 
 const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
 const PAPERS_BASE = path.join(__dirname, '..', 'uploads', 'exam_papers');
@@ -70,13 +71,21 @@ exports.listExams = async (req, res) => {
       ORDER BY e.created_at DESC
     `);
 
-    // Fetch slots for each exam
-    for (const exam of rows) {
-      const [slots] = await pool.execute(
-        'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
-        [exam.id]
+    // Batch fetch all slots in one query instead of N+1
+    if (rows.length > 0) {
+      const examIds = rows.map(e => e.id);
+      const [allSlots] = await pool.query(
+        'SELECT * FROM exam_slots WHERE exam_id IN (?) ORDER BY slot_date, start_time',
+        [examIds]
       );
-      exam.slots = slots;
+      const slotMap = {};
+      for (const s of allSlots) {
+        if (!slotMap[s.exam_id]) slotMap[s.exam_id] = [];
+        slotMap[s.exam_id].push(s);
+      }
+      for (const exam of rows) {
+        exam.slots = slotMap[exam.id] || [];
+      }
     }
 
     return res.json({ success: true, data: rows });
@@ -735,16 +744,14 @@ exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
-    // Show exams that are active, student is assigned, and at least one slot is currently running
-    // (start_time has passed AND end_time hasn't passed yet)
+    // Single query: exams + submission info via LEFT JOIN (no subqueries)
     const [exams] = await pool.execute(`
-      SELECT e.*,
-        (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
-        (SELECT sub.id FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_id,
-        (SELECT sub.original_name FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_file,
-        (SELECT sub.submitted_at FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_date
+      SELECT e.*, sub.id AS submission_id, sub.original_name AS submission_file,
+             sub.submitted_at AS submission_date,
+             IF(sub.id IS NOT NULL, 1, 0) AS submitted
       FROM exams e
       INNER JOIN exam_students ea ON ea.exam_id = e.id AND ea.student_id = ?
+      LEFT JOIN exam_submissions sub ON sub.exam_id = e.id AND sub.student_id = ?
       WHERE e.status = 'active'
         AND EXISTS (
           SELECT 1 FROM exam_slots s
@@ -753,24 +760,39 @@ exports.studentExamList = async (req, res) => {
             AND CONCAT(s.slot_date, ' ', s.end_time) > NOW()
         )
       ORDER BY e.created_at DESC
-    `, [userId, userId, userId, userId, userId]);
+    `, [userId, userId]);
 
-    // Fetch only currently running slots and question papers for each exam
-    for (const exam of exams) {
-      const [slots] = await pool.execute(
-        `SELECT * FROM exam_slots WHERE exam_id = ?
-         AND CONCAT(slot_date, ' ', start_time) <= NOW()
-         AND CONCAT(slot_date, ' ', end_time) > NOW()
-         ORDER BY slot_date, start_time`,
-        [exam.id]
-      );
-      exam.slots = slots;
+    // Batch fetch slots + papers in 2 queries instead of N*2
+    if (exams.length > 0) {
+      const examIds = exams.map(e => e.id);
 
-      const [papers] = await pool.execute(
-        'SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at',
-        [exam.id]
-      );
-      exam.question_papers = papers;
+      const [allSlots, allPapers] = await Promise.all([
+        pool.query(
+          `SELECT * FROM exam_slots WHERE exam_id IN (?)
+           AND CONCAT(slot_date, ' ', start_time) <= NOW()
+           AND CONCAT(slot_date, ' ', end_time) > NOW()
+           ORDER BY slot_date, start_time`,
+          [examIds]
+        ),
+        pool.query(
+          'SELECT id, exam_id, original_name, size_bytes FROM exam_question_papers WHERE exam_id IN (?) ORDER BY uploaded_at',
+          [examIds]
+        )
+      ]);
+
+      const slotMap = {}, paperMap = {};
+      for (const s of allSlots[0]) {
+        if (!slotMap[s.exam_id]) slotMap[s.exam_id] = [];
+        slotMap[s.exam_id].push(s);
+      }
+      for (const p of allPapers[0]) {
+        if (!paperMap[p.exam_id]) paperMap[p.exam_id] = [];
+        paperMap[p.exam_id].push(p);
+      }
+      for (const exam of exams) {
+        exam.slots = slotMap[exam.id] || [];
+        exam.question_papers = paperMap[exam.id] || [];
+      }
     }
 
     return res.json({ success: true, data: exams });
@@ -786,34 +808,25 @@ exports.studentExamDetail = async (req, res) => {
     const examId = req.params.id;
     const userId = req.session.user.id;
 
-    // Check assignment
-    const [assigned] = await pool.execute(
-      'SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
+    // Check assignment + fetch exam in parallel
+    const [[assigned], [exams]] = await Promise.all([
+      pool.execute('SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?', [examId, userId]),
+      pool.execute('SELECT * FROM exams WHERE id = ?', [examId])
+    ]);
+
     if (assigned.length === 0) {
       return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
     }
-
-    const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
     if (exams.length === 0) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
-    const [slots] = await pool.execute(
-      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time',
-      [examId]
-    );
-
-    const [subs] = await pool.execute(
-      'SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
-
-    const [papers] = await pool.execute(
-      'SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at',
-      [examId]
-    );
+    // Fetch slots, submissions, papers in parallel
+    const [[slots], [subs], [papers]] = await Promise.all([
+      pool.execute('SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time', [examId]),
+      pool.execute('SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?', [examId, userId]),
+      pool.execute('SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at', [examId])
+    ]);
 
     return res.json({
       success: true,
@@ -831,59 +844,63 @@ exports.submitAnswer = async (req, res) => {
     const examId = req.params.id;
     const userId = req.session.user.id;
 
-    const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
+    // Parallel: fetch exam, check assignment, check slots, check existing submission
+    const [[exams], [assigned], [expiredCheck], [existing]] = await Promise.all([
+      pool.execute('SELECT * FROM exams WHERE id = ?', [examId]),
+      pool.execute('SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?', [examId, userId]),
+      pool.execute(`SELECT COUNT(*) AS still_open FROM exam_slots
+         WHERE exam_id = ? AND CONCAT(slot_date, ' ', end_time) > NOW()`, [examId]),
+      pool.execute('SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?', [examId, userId])
+    ]);
+
     if (exams.length === 0) {
+      if (req.file) await fsp.unlink(req.file.path).catch(() => {});
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
     const exam = exams[0];
 
-    // Check student is assigned to this exam
-    const [assigned] = await pool.execute(
-      'SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
     if (assigned.length === 0) {
-      if (req.file) fs.unlinkSync(req.file.path);
+      if (req.file) await fsp.unlink(req.file.path).catch(() => {});
       return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
     }
 
     if (exam.status !== 'active') {
+      if (req.file) await fsp.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ success: false, message: 'Exam is closed, submissions not accepted' });
     }
 
-    // Check if last slot has passed (let MySQL compare using server time)
-    const [expiredCheck] = await pool.execute(
-      `SELECT COUNT(*) AS still_open FROM exam_slots
-       WHERE exam_id = ? AND CONCAT(slot_date, ' ', end_time) > NOW()`,
-      [examId]
-    );
-
     if (expiredCheck[0].still_open === 0) {
+      if (req.file) await fsp.unlink(req.file.path).catch(() => {});
       return res.status(400).json({ success: false, message: 'All exam slots have ended' });
     }
-
-    const [existing] = await pool.execute(
-      'SELECT * FROM exam_submissions WHERE exam_id = ? AND student_id = ?',
-      [examId, userId]
-    );
 
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
     const file = req.file;
-    const tempPath = file.path; // multer saved to _temp/
+    const tempPath = file.path;
 
-    // Build the exam folder name: "{Title} - {Room} - {Date} - {Start}-{End}"
-    const folderName = await getExamFolderName(examId);
-    if (!folderName) {
-      fs.unlinkSync(tempPath);
-      return res.status(404).json({ success: false, message: 'Exam not found' });
+    // Build folder name using already-fetched exam data (avoids 2 extra queries)
+    const [slots] = await pool.execute(
+      'SELECT * FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time LIMIT 1',
+      [examId]
+    );
+    const title = sanitize(exam.title);
+    const subject = sanitize(exam.subject);
+    let folderName = `${title} - ${subject}`;
+    if (slots.length > 0) {
+      const slot = slots[0];
+      const room = sanitize(slot.room);
+      const date = formatDate(slot.slot_date);
+      const start = formatTime(slot.start_time).replace(':', '');
+      const end = formatTime(slot.end_time).replace(':', '');
+      folderName = `${title} - ${subject} - ${room} - ${date} - ${start}-${end}`;
     }
 
     const folderPath = getExamFolderPath(folderName);
-    fs.mkdirSync(folderPath, { recursive: true });
+    await fsp.mkdir(folderPath, { recursive: true });
 
     // Filename: "{app_id}-{timestamp}{ext}"
     const appId = req.session.user.app_id || req.session.user.username;
@@ -891,44 +908,46 @@ exports.submitAnswer = async (req, res) => {
     const storedName = `${sanitize(appId)}-${Date.now()}${ext}`;
     const destPath = path.join(folderPath, storedName);
 
-    // Move file from temp to exam folder (copy+delete for cross-device safety)
-    fs.copyFileSync(tempPath, destPath);
-    fs.unlinkSync(tempPath);
+    // Move file from temp to exam folder (async for non-blocking)
+    await fsp.copyFile(tempPath, destPath);
+    await fsp.unlink(tempPath);
 
     // If re-uploading, delete old file and update record
     if (existing.length > 0) {
       const old = existing[0];
-      const oldFolder = old.folder_name ? getExamFolderPath(old.folder_name) : null;
-      if (oldFolder) {
-        const oldFilePath = path.join(oldFolder, old.stored_name);
-        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      if (old.folder_name) {
+        const oldFilePath = path.join(getExamFolderPath(old.folder_name), old.stored_name);
+        await fsp.unlink(oldFilePath).catch(() => {});
       }
 
-      await pool.execute(
-        `UPDATE exam_submissions SET original_name = ?, stored_name = ?, folder_name = ?, mime_type = ?, size_bytes = ?, submitted_at = NOW()
-         WHERE id = ?`,
-        [file.originalname, storedName, folderName, file.mimetype, file.size, old.id]
-      );
-
-      await pool.execute(
-        'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-        [userId, 're-uploaded exam answer', exam.title + ' - ' + file.originalname]
-      );
+      // DB update + activity log in parallel
+      await Promise.all([
+        pool.execute(
+          `UPDATE exam_submissions SET original_name = ?, stored_name = ?, folder_name = ?, mime_type = ?, size_bytes = ?, submitted_at = NOW()
+           WHERE id = ?`,
+          [file.originalname, storedName, folderName, file.mimetype, file.size, old.id]
+        ),
+        pool.execute(
+          'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+          [userId, 're-uploaded exam answer', exam.title + ' - ' + file.originalname]
+        )
+      ]);
 
       return res.json({ success: true, data: { id: old.id, reupload: true } });
     }
 
-    // First submission
-    const [result] = await pool.execute(
-      `INSERT INTO exam_submissions (exam_id, student_id, original_name, stored_name, folder_name, mime_type, size_bytes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [examId, userId, file.originalname, storedName, folderName, file.mimetype, file.size]
-    );
-
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [userId, 'submitted exam answer', exam.title + ' - ' + file.originalname]
-    );
+    // First submission — insert + log in parallel
+    const [[result]] = await Promise.all([
+      pool.execute(
+        `INSERT INTO exam_submissions (exam_id, student_id, original_name, stored_name, folder_name, mime_type, size_bytes)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [examId, userId, file.originalname, storedName, folderName, file.mimetype, file.size]
+      ),
+      pool.execute(
+        'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+        [userId, 'submitted exam answer', exam.title + ' - ' + file.originalname]
+      )
+    ]);
 
     return res.json({ success: true, data: { id: result.insertId } });
   } catch (err) {

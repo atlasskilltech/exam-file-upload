@@ -1,4 +1,4 @@
-// MySQL connection pool configuration
+// MySQL connection pool configuration — sized for 500+ concurrent students
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
@@ -8,9 +8,11 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  timezone: '+05:30' // IST
+  connectionLimit: parseInt(process.env.DB_POOL_SIZE) || 100,
+  queueLimit: 500,
+  timezone: '+05:30', // IST
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 });
 
 module.exports = pool;
