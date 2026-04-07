@@ -31,6 +31,8 @@ router.get('/question-papers/download/:id', ctrl.downloadQuestionPaper);
 // Student assignment management (admin)
 router.get('/:id/assigned-students', requireAdmin, ctrl.getAssignedStudents);
 router.post('/:id/assign-students', requireAdmin, ctrl.assignStudents);
+router.post('/:id/assign-students-csv', requireAdmin,
+  examUpload.single('csv_file'), ctrl.assignStudentsCSV);
 router.delete('/:id/unassign-student/:studentId', requireAdmin, ctrl.unassignStudent);
 
 // Submissions
