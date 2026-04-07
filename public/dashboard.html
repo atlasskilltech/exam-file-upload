@@ -5,71 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalVault — Dashboard</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .welcome-section {
+      text-align: center;
+      padding: 40px 20px 32px;
+    }
+    .welcome-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      background: var(--accent);
+      color: #000;
+      font-family: var(--font-heading);
+      font-weight: 800;
+      font-size: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .welcome-section h1 {
+      font-family: var(--font-heading);
+      font-weight: 800;
+      font-size: 28px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .welcome-section p {
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 16px;
+    }
+    .nav-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: block;
+    }
+    .nav-card:hover {
+      border-color: var(--accent);
+      background: var(--surface-2);
+      transform: translateY(-2px);
+    }
+    .nav-card .card-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+    }
+    .nav-card:hover .card-icon { color: var(--accent); }
+    .nav-card .card-title {
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .nav-card .card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+  </style>
 </head>
 <body>
   <div class="app-layout" id="app">
-    <!-- Sidebar injected by JS -->
     <main class="main-content">
-      <div class="page-header">
-        <h1>Dashboard</h1>
-        <p>Welcome back. Here's your overview.</p>
+      <div class="welcome-section">
+        <div class="welcome-avatar" id="avatar"></div>
+        <h1 id="welcomeTitle">Welcome to LocalVault</h1>
+        <p id="welcomeDesc">Select a section to get started</p>
       </div>
-
-      <div class="stats-grid" id="statsGrid">
-        <div class="stat-card">
-          <div class="stat-value" id="statFiles">--</div>
-          <div class="stat-label">My Files</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statCategories">--</div>
-          <div class="stat-label">Categories</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statStorage">--</div>
-          <div class="stat-label">Storage Used</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statRecent">--</div>
-          <div class="stat-label">This Month</div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">Recent Files</div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Filename</th>
-                <th>Size</th>
-                <th>Category</th>
-                <th>Uploaded</th>
-              </tr>
-            </thead>
-            <tbody id="recentFiles">
-              <tr><td colspan="4" class="empty-state">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">Recent Activity</div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Target</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody id="recentActivity">
-              <tr><td colspan="3" class="empty-state">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div class="nav-grid" id="navGrid"></div>
     </main>
   </div>
 
@@ -79,101 +101,78 @@
       const user = await checkAuth();
       if (!user) return;
 
-      // Inject sidebar
       document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
       initSidebar(user);
 
-      // Load dashboard data
-      try {
-        // Fetch files
-        const filesRes = await apiFetch('/files?sort=newest&page=1');
-        const files = filesRes.data.files;
+      // Avatar initial
+      const initial = (user.username || 'U').charAt(0).toUpperCase();
+      document.getElementById('avatar').textContent = initial;
 
-        // Stats
-        document.getElementById('statFiles').textContent = filesRes.data.pagination.total;
+      // Welcome text
+      document.getElementById('welcomeTitle').textContent = `Welcome, ${user.username}`;
+      document.getElementById('welcomeDesc').textContent =
+        user.role === 'admin'
+          ? 'Manage exams, students, and submissions'
+          : 'View your exams and submit answers';
 
-        let totalSize = 0;
-        let thisMonth = 0;
-        const now = new Date();
-        files.forEach(f => {
-          totalSize += f.size_bytes || 0;
-        });
+      // Build nav cards based on role
+      const cards = [];
 
-        // Get all files for accurate stats (use a larger query)
-        const allRes = await fetch('/files?sort=newest&page=1');
-        const allData = await allRes.json();
-        if (allData.success) {
-          document.getElementById('statFiles').textContent = allData.data.pagination.total;
-        }
-
-        // Count this month from recent files
-        files.forEach(f => {
-          const d = new Date(f.uploaded_at);
-          if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) {
-            thisMonth++;
+      if (user.role === 'admin') {
+        cards.push(
+          {
+            href: '/exams.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 0a.5.5 0 0 1 .5.5V2h4V.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1H2V4a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 7v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H2zm6.5 1a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L8 12.293V8.5a.5.5 0 0 1 .5-.5z"/></svg>`,
+            title: 'Exam Manager',
+            desc: 'Create, edit & manage exams'
+          },
+          {
+            href: '/admin.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/></svg>`,
+            title: 'Students',
+            desc: 'Add, manage & bulk upload students'
+          },
+          {
+            href: '/reports.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M4 11H2v3h2v-3zm5-4H7v7h2V7zm5-5h-2v12h2V2zm-2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1h-2zM6 7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7zm-5 4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-3z"/></svg>`,
+            title: 'Reports',
+            desc: 'Analytics & activity logs'
+          },
+          {
+            href: '/manual.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/></svg>`,
+            title: 'User Manual',
+            desc: 'How to use the system'
           }
-        });
-        document.getElementById('statRecent').textContent = thisMonth;
-
-        // Total storage from all files
-        let storageTotal = 0;
-        files.forEach(f => storageTotal += (f.size_bytes || 0));
-        document.getElementById('statStorage').textContent = formatSize(storageTotal);
-
-        // Categories count
-        const catRes = await apiFetch('/categories');
-        document.getElementById('statCategories').textContent = catRes.data.length;
-
-        // Recent files table
-        const tbody = document.getElementById('recentFiles');
-        if (files.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No files yet. <a href="/upload.html" style="color:var(--accent)">Upload your first file</a></td></tr>';
-        } else {
-          tbody.innerHTML = files.slice(0, 10).map(f => `
-            <tr>
-              <td>${escapeHtml(f.original_name)}</td>
-              <td>${formatSize(f.size_bytes)}</td>
-              <td>${f.category_name || '—'}</td>
-              <td>${formatDate(f.uploaded_at)}</td>
-            </tr>
-          `).join('');
-        }
-      } catch (err) {
-        console.error(err);
+        );
       }
 
-      // Recent activity (for all users if admin, own logs visible via files)
-      try {
-        if (user.role === 'admin') {
-          const logRes = await apiFetch('/admin/logs');
-          const actBody = document.getElementById('recentActivity');
-          const logs = logRes.data.slice(0, 10);
-          if (logs.length === 0) {
-            actBody.innerHTML = '<tr><td colspan="3" class="empty-state">No activity yet</td></tr>';
-          } else {
-            actBody.innerHTML = logs.map(l => `
-              <tr>
-                <td>${escapeHtml(l.action)}</td>
-                <td>${escapeHtml(l.target || '')}</td>
-                <td>${formatDate(l.created_at)}</td>
-              </tr>
-            `).join('');
+      if (user.role === 'student') {
+        cards.push(
+          {
+            href: '/student-exams.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 0a.5.5 0 0 1 .5.5V2h4V.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1H2V4a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 7v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H2zm6.5 1a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L8 12.293V8.5a.5.5 0 0 1 .5-.5z"/></svg>`,
+            title: 'My Exams',
+            desc: 'View exams & submit answers'
+          },
+          {
+            href: '/manual.html',
+            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/></svg>`,
+            title: 'User Manual',
+            desc: 'How to use the system'
           }
-        } else {
-          document.getElementById('recentActivity').innerHTML =
-            '<tr><td colspan="3" class="empty-state">Activity log available for admins</td></tr>';
-        }
-      } catch {
-        document.getElementById('recentActivity').innerHTML =
-          '<tr><td colspan="3" class="empty-state">Activity log available for admins</td></tr>';
+        );
       }
+
+      // Render cards
+      document.getElementById('navGrid').innerHTML = cards.map(c => `
+        <a href="${c.href}" class="nav-card">
+          <div class="card-icon">${c.icon}</div>
+          <div class="card-title">${c.title}</div>
+          <div class="card-desc">${c.desc}</div>
+        </a>
+      `).join('');
     })();
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
   </script>
 </body>
 </html>
