@@ -5,93 +5,125 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalVault — Dashboard</title>
   <link rel="stylesheet" href="/assets/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    .main-content.dashboard-main {
+      background: #f4f6f9;
+      min-height: 100vh;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .dashboard-wrapper {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px 60px;
+    }
+
+    /* ── Welcome section ─────────────────── */
     .welcome-section {
       text-align: center;
-      padding: 40px 20px 32px;
+      margin-bottom: 40px;
     }
     .welcome-avatar {
-      width: 64px;
-      height: 64px;
-      border-radius: 16px;
-      background: var(--accent);
-      color: #000;
-      font-family: var(--font-heading);
-      font-weight: 800;
-      font-size: 28px;
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      background: #2ecc71;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 30px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 14px rgba(46, 204, 113, 0.3);
     }
     .welcome-section h1 {
-      font-family: var(--font-heading);
-      font-weight: 800;
-      font-size: 28px;
-      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 26px;
+      color: #1a1a2e;
       margin-bottom: 6px;
+      letter-spacing: -0.3px;
     }
     .welcome-section p {
-      color: var(--text-muted);
-      font-size: 14px;
+      color: #8a8fa8;
+      font-size: 15px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
     }
+
+    /* ── Navigation card grid ────────────── */
     .nav-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 16px;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 0 16px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
     }
+    @media (max-width: 768px) {
+      .nav-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .nav-grid { grid-template-columns: 1fr; }
+    }
+
     .nav-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 28px 20px;
+      background: #fff;
+      border: 1px solid #e2e6ed;
+      border-radius: 14px;
+      padding: 32px 20px 28px;
       text-align: center;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.2s ease;
       text-decoration: none;
       display: block;
     }
     .nav-card:hover {
-      border-color: var(--accent);
-      background: var(--surface-2);
+      border-color: #c5cad6;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
       transform: translateY(-2px);
     }
+
     .nav-card .card-icon {
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 14px;
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 16px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-muted);
+      color: #5a6178;
     }
-    .nav-card:hover .card-icon { color: var(--accent); }
+    .nav-card:hover .card-icon {
+      color: #3a4a6b;
+    }
+
     .nav-card .card-title {
-      font-family: var(--font-heading);
-      font-weight: 700;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
       font-size: 15px;
-      color: var(--text);
+      color: #1a1a2e;
       margin-bottom: 4px;
     }
     .nav-card .card-desc {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      color: #8a8fa8;
+      font-weight: 400;
       line-height: 1.4;
     }
   </style>
 </head>
 <body>
   <div class="app-layout" id="app">
-    <main class="main-content">
-      <div class="welcome-section">
-        <div class="welcome-avatar" id="avatar"></div>
-        <h1 id="welcomeTitle">Welcome to LocalVault</h1>
-        <p id="welcomeDesc">Select a section to get started</p>
+    <main class="main-content dashboard-main">
+      <div class="dashboard-wrapper">
+        <div class="welcome-section">
+          <div class="welcome-avatar" id="avatar"></div>
+          <h1 id="welcomeTitle">Welcome to LocalVault</h1>
+          <p id="welcomeDesc">Select a section from the sidebar to get started</p>
+        </div>
+        <div class="nav-grid" id="navGrid"></div>
       </div>
-      <div class="nav-grid" id="navGrid"></div>
     </main>
   </div>
 
@@ -109,11 +141,8 @@
       document.getElementById('avatar').textContent = initial;
 
       // Welcome text
-      document.getElementById('welcomeTitle').textContent = `Welcome, ${user.username}`;
-      document.getElementById('welcomeDesc').textContent =
-        user.role === 'admin'
-          ? 'Manage exams, students, and submissions'
-          : 'View your exams and submit answers';
+      document.getElementById('welcomeTitle').textContent = `Welcome to LocalVault`;
+      document.getElementById('welcomeDesc').textContent = 'Select a section from the sidebar to get started';
 
       // Build nav cards based on role
       const cards = [];
@@ -122,25 +151,25 @@
         cards.push(
           {
             href: '/exams.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 0a.5.5 0 0 1 .5.5V2h4V.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1H2V4a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 7v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H2zm6.5 1a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L8 12.293V8.5a.5.5 0 0 1 .5-.5z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14l-2 2 2 2"/><path d="M12 14l2 2-2 2"/></svg>`,
             title: 'Exam Manager',
             desc: 'Create, edit & manage exams'
           },
           {
             href: '/admin.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
             title: 'Students',
-            desc: 'Add, manage & bulk upload students'
+            desc: 'Overview & stats'
           },
           {
             href: '/reports.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M4 11H2v3h2v-3zm5-4H7v7h2V7zm5-5h-2v12h2V2zm-2-1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1h-2zM6 7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7zm-5 4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-3z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>`,
             title: 'Reports',
-            desc: 'Analytics & activity logs'
+            desc: 'Dashboard, analytics & logs'
           },
           {
             href: '/manual.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
             title: 'User Manual',
             desc: 'How to use the system'
           }
@@ -151,13 +180,13 @@
         cards.push(
           {
             href: '/student-exams.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 0a.5.5 0 0 1 .5.5V2h4V.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1H2V4a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 7v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H2zm6.5 1a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L8 12.293V8.5a.5.5 0 0 1 .5-.5z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14l-2 2 2 2"/><path d="M12 14l2 2-2 2"/></svg>`,
             title: 'My Exams',
             desc: 'View exams & submit answers'
           },
           {
             href: '/manual.html',
-            icon: `<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811V2.828zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492V2.687zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783z"/></svg>`,
+            icon: `<svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
             title: 'User Manual',
             desc: 'How to use the system'
           }
