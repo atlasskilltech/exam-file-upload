@@ -735,7 +735,8 @@ exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
-    // Show exams that are active, student is assigned, and at least one slot hasn't ended yet
+    // Show exams that are active, student is assigned, and at least one slot is currently running
+    // (start_time has passed AND end_time hasn't passed yet)
     const [exams] = await pool.execute(`
       SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
@@ -745,14 +746,22 @@ exports.studentExamList = async (req, res) => {
       FROM exams e
       INNER JOIN exam_students ea ON ea.exam_id = e.id AND ea.student_id = ?
       WHERE e.status = 'active'
-        AND EXISTS (SELECT 1 FROM exam_slots s WHERE s.exam_id = e.id AND CONCAT(s.slot_date, ' ', s.end_time) > NOW())
+        AND EXISTS (
+          SELECT 1 FROM exam_slots s
+          WHERE s.exam_id = e.id
+            AND CONCAT(s.slot_date, ' ', s.start_time) <= NOW()
+            AND CONCAT(s.slot_date, ' ', s.end_time) > NOW()
+        )
       ORDER BY e.created_at DESC
     `, [userId, userId, userId, userId, userId]);
 
-    // Fetch slots that haven't ended yet and question papers for each exam
+    // Fetch only currently running slots and question papers for each exam
     for (const exam of exams) {
       const [slots] = await pool.execute(
-        'SELECT * FROM exam_slots WHERE exam_id = ? AND CONCAT(slot_date, \' \', end_time) > NOW() ORDER BY slot_date, start_time',
+        `SELECT * FROM exam_slots WHERE exam_id = ?
+         AND CONCAT(slot_date, ' ', start_time) <= NOW()
+         AND CONCAT(slot_date, ' ', end_time) > NOW()
+         ORDER BY slot_date, start_time`,
         [exam.id]
       );
       exam.slots = slots;
