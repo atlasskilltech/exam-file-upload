@@ -1,5 +1,5 @@
 // ================================================================
-// LocalVault — Main Express Server (optimized for 500+ users)
+// ATLAS Exam — Main Express Server (optimized for 500+ users)
 // ================================================================
 
 // Set Node.js timezone to IST
@@ -87,6 +87,6 @@ function startServer() {
 
   // ── Start server ────────────────────────────────────────────
   app.listen(PORT, () => {
-    console.log(`LocalVault worker ${process.pid} running at http://localhost:${PORT}`);
+    console.log(`ATLAS Exam worker ${process.pid} running at http://localhost:${PORT}`);
   });
 }

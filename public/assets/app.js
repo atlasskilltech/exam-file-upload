@@ -127,7 +127,7 @@ function formatDate(dateStr) {
 function getSidebarHTML() {
   return `
     <aside class="sidebar">
-      <div class="sidebar-logo">LocalVault</div>
+      <div class="sidebar-logo">ATLAS Exam</div>
       <nav class="sidebar-nav">
         <a href="/dashboard.html" class="hide-student"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-4h3v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146z"/></svg> <span>Dashboard</span></a>
         <a href="/exams.html" class="admin-only"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 0a.5.5 0 0 1 .5.5V2h4V.5a.5.5 0 0 1 1 0V2h1a2 2 0 0 1 2 2v1H2V4a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM2 7v7a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H2zm6.5 1a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 1 1 .708-.708L8 12.293V8.5a.5.5 0 0 1 .5-.5z"/></svg> <span>Exam Manager</span></a>

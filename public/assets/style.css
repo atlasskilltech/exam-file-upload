@@ -1,29 +1,28 @@
 /* ================================================================
-   LocalVault — Global Styles
-   Dark theme with accent colors
+   ATLAS Exam — Global Styles
+   Light theme
    ================================================================ */
 
-/* ── Fonts (local fallback since offline) ────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg: #0d0d0d;
-  --surface: #161616;
-  --surface-2: #1e1e1e;
-  --border: #2a2a2a;
-  --border-light: #333;
-  --text: #e0e0e0;
-  --text-muted: #888;
-  --accent: #e8ff47;
-  --accent-dim: rgba(232, 255, 71, 0.15);
-  --cyan: #47ffd4;
-  --cyan-dim: rgba(71, 255, 212, 0.15);
-  --red: #ff4757;
-  --red-dim: rgba(255, 71, 87, 0.15);
-  --green: #2ed573;
-  --font-heading: 'Syne', sans-serif;
-  --font-body: 'DM Mono', monospace;
-  --radius: 8px;
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #e2e6ed;
+  --border-light: #d1d5de;
+  --text: #1a1a2e;
+  --text-muted: #6b7280;
+  --accent: #2ecc71;
+  --accent-dim: rgba(46, 204, 113, 0.1);
+  --cyan: #0ea5e9;
+  --cyan-dim: rgba(14, 165, 233, 0.1);
+  --red: #ef4444;
+  --red-dim: rgba(239, 68, 68, 0.08);
+  --green: #16a34a;
+  --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius: 10px;
   --sidebar-width: 240px;
 }
 
@@ -35,16 +34,6 @@ body {
   color: var(--text);
   min-height: 100vh;
   line-height: 1.6;
-}
-
-/* ── Noise overlay ─────────────────────────────────────────── */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 9999;
 }
 
 /* ── Layout ────────────────────────────────────────────────── */
@@ -65,6 +54,7 @@ body::before {
   left: 0;
   bottom: 0;
   z-index: 100;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
 }
 
 .sidebar-logo {
@@ -90,6 +80,7 @@ body::before {
   color: var(--text-muted);
   text-decoration: none;
   font-size: 13px;
+  font-weight: 500;
   transition: all 0.2s;
   border-left: 3px solid transparent;
 }
@@ -103,6 +94,7 @@ body::before {
   color: var(--accent);
   border-left-color: var(--accent);
   background: var(--accent-dim);
+  font-weight: 600;
 }
 
 .sidebar-nav .admin-only { display: none; }
@@ -117,8 +109,8 @@ body::before {
 }
 
 .sidebar-user .username {
-  color: var(--cyan);
-  font-weight: 500;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .sidebar-user .role {
@@ -154,15 +146,15 @@ body::before {
 
 .page-header h1 {
   font-family: var(--font-heading);
-  font-weight: 800;
-  font-size: 28px;
+  font-weight: 700;
+  font-size: 26px;
   color: var(--text);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
 }
 
 .page-header p {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 4px;
 }
 
@@ -173,15 +165,17 @@ body::before {
   border-radius: var(--radius);
   padding: 24px;
   margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .card-header {
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+  color: var(--text);
 }
 
 /* ── Stat cards grid ───────────────────────────────────────── */
@@ -198,6 +192,7 @@ body::before {
   border-radius: var(--radius);
   padding: 20px;
   text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .stat-card .stat-value {
@@ -213,6 +208,7 @@ body::before {
   margin-top: 4px;
   text-transform: uppercase;
   letter-spacing: 1px;
+  font-weight: 500;
 }
 
 /* ── Forms ──────────────────────────────────────────────────── */
@@ -227,12 +223,13 @@ body::before {
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 500;
 }
 
 .form-control {
   width: 100%;
   padding: 10px 14px;
-  background: var(--bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
@@ -244,12 +241,13 @@ body::before {
 .form-control:focus {
   outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 select.form-control {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px;
@@ -270,6 +268,7 @@ textarea.form-control {
   border-radius: var(--radius);
   font-family: var(--font-body);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
   text-decoration: none;
@@ -277,8 +276,7 @@ textarea.form-control {
 
 .btn-primary {
   background: var(--accent);
-  color: #000;
-  font-weight: 500;
+  color: #fff;
 }
 
 .btn-primary:hover { opacity: 0.85; }
@@ -288,12 +286,12 @@ textarea.form-control {
 }
 
 .btn-secondary {
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
 }
 
-.btn-secondary:hover { border-color: var(--text-muted); }
+.btn-secondary:hover { border-color: var(--border-light); background: var(--surface-2); }
 
 .btn-danger {
   background: var(--red-dim);
@@ -326,11 +324,12 @@ thead th {
   text-align: left;
   padding: 10px 12px;
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  background: var(--surface-2);
 }
 
 tbody td {
@@ -357,7 +356,7 @@ tbody tr:hover {
 
 .pagination button {
   padding: 6px 14px;
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: var(--radius);
@@ -388,18 +387,19 @@ tbody tr:hover {
   min-width: 280px;
   animation: toastIn 0.3s ease;
   border: 1px solid;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .toast.success {
-  background: rgba(46, 213, 115, 0.1);
+  background: #f0fdf4;
   color: var(--green);
-  border-color: rgba(46, 213, 115, 0.3);
+  border-color: #bbf7d0;
 }
 
 .toast.error {
-  background: var(--red-dim);
+  background: #fef2f2;
   color: var(--red);
-  border-color: rgba(255, 71, 87, 0.3);
+  border-color: #fecaca;
 }
 
 .toast.removing {
@@ -421,7 +421,7 @@ tbody tr:hover {
   display: none;
   position: absolute;
   inset: 0;
-  background: rgba(13, 13, 13, 0.7);
+  background: rgba(244, 246, 249, 0.8);
   justify-content: center;
   align-items: center;
   z-index: 50;
@@ -464,7 +464,7 @@ tbody tr:hover {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.3);
   z-index: 5000;
   justify-content: center;
   align-items: center;
@@ -480,12 +480,14 @@ tbody tr:hover {
   max-width: 400px;
   width: 90%;
   animation: slideIn 0.2s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
 .modal h3 {
   font-family: var(--font-heading);
   font-weight: 700;
   margin-bottom: 12px;
+  color: var(--text);
 }
 
 .modal p {
@@ -585,6 +587,7 @@ tbody tr:hover {
   align-items: center;
   min-height: 100vh;
   padding: 20px;
+  background: var(--bg);
 }
 
 .login-box {
@@ -594,6 +597,7 @@ tbody tr:hover {
   padding: 40px;
   width: 100%;
   max-width: 400px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 .login-box h1 {
@@ -680,7 +684,7 @@ tbody tr:hover {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .badge-admin {
@@ -694,6 +698,6 @@ tbody tr:hover {
 }
 
 .badge-student {
-  background: rgba(52, 152, 219, 0.15);
+  background: rgba(52, 152, 219, 0.1);
   color: #3498db;
 }
