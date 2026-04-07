@@ -41,22 +41,24 @@ function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // ── Session store — MySQL-backed so sessions survive across workers ──
-  const sessionStore = new MySQLStore({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+  const dbOptions = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'localvault_db',
     clearExpired: true,
     checkExpirationInterval: 900000, // 15 min
     expiration: 1000 * 60 * 60 * 8  // 8 hours
-  });
+  };
+  const sessionStore = new MySQLStore(dbOptions);
 
   // ── Session configuration ───────────────────────────────────
   app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback_secret',
+    secret: process.env.SESSION_SECRET || 'atlas_exam_secret_key_2024',
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       maxAge: 1000 * 60 * 60 * 8, // 8 hours
       httpOnly: true,
