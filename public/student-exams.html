@@ -41,8 +41,8 @@
   <div class="app-layout" id="app">
     <main class="main-content">
       <div class="page-header">
-        <h1>Today's Exams</h1>
-        <p>Exams scheduled for today. Submit your answers before the slot ends.</p>
+        <h1>My Exams</h1>
+        <p>Your assigned exams. Submit your answers before the slot ends.</p>
       </div>
 
       <div class="student-stats" id="studentStats"></div>
@@ -150,14 +150,14 @@
         const submitted = exams.filter(e => e.submitted > 0).length;
 
         document.getElementById('studentStats').innerHTML = `
-          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Today's Exams</div></div>
+          <div class="student-stat"><div class="val">${assigned}</div><div class="lbl">Active Exams</div></div>
           <div class="student-stat"><div class="val" style="color:var(--green)">${submitted}</div><div class="lbl">Submitted</div></div>
           <div class="student-stat"><div class="val" style="color:var(--red)">${assigned - submitted}</div><div class="lbl">Pending</div></div>
         `;
 
         const container = document.getElementById('examCards');
         if (exams.length === 0) {
-          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No exams scheduled for today.</p></div>';
+          container.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">0</div><p>No active exams assigned to you.</p></div>';
           return;
         }
 

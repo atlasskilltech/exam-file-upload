@@ -639,6 +639,78 @@ exports.assignStudents = async (req, res) => {
   }
 };
 
+// POST /exams/:id/assign-students-csv — bulk assign via CSV (app_id list)
+exports.assignStudentsCSV = async (req, res) => {
+  try {
+    const examId = req.params.id;
+
+    const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
+    if (exams.length === 0) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No CSV file uploaded' });
+    }
+
+    const csvContent = fs.readFileSync(req.file.path, 'utf-8');
+    fs.unlinkSync(req.file.path); // clean up temp file
+
+    const lines = csvContent.split(/\r?\n/).filter(l => l.trim());
+    let added = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (const line of lines) {
+      // Each line can be just app_id, or name,app_id — extract app_id
+      const parts = line.split(',').map(p => p.trim().replace(/^["']|["']$/g, ''));
+      // If 1 column: app_id. If 2+ columns: last column or second column is app_id
+      let appId = parts.length === 1 ? parts[0] : parts[1];
+      if (!appId) continue;
+
+      // Skip header row
+      if (appId.toLowerCase() === 'app_id' || appId.toLowerCase() === 'appid' || appId.toLowerCase() === 'id') continue;
+
+      // Find student by app_id
+      const [students] = await pool.execute(
+        "SELECT id FROM users WHERE app_id = ? AND role = 'student'",
+        [appId]
+      );
+
+      if (students.length === 0) {
+        errors.push(appId);
+        skipped++;
+        continue;
+      }
+
+      try {
+        await pool.execute(
+          'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+          [examId, students[0].id]
+        );
+        added++;
+      } catch (e) {
+        skipped++;
+      }
+    }
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [req.session.user.id, 'bulk assigned students to exam (CSV)', exams[0].title + ' (' + added + ' added, ' + skipped + ' skipped)']
+    );
+
+    return res.json({
+      success: true,
+      message: `${added} student(s) assigned, ${skipped} skipped`,
+      data: { added, skipped, errors }
+    });
+  } catch (err) {
+    console.error('Assign students CSV error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to process CSV' });
+  }
+};
+
 // DELETE /exams/:id/unassign-student/:studentId — remove student from exam
 exports.unassignStudent = async (req, res) => {
   try {
@@ -658,12 +730,12 @@ exports.unassignStudent = async (req, res) => {
 // STUDENT ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams/student/list — only today's exams visible to assigned students
+// GET /exams/student/list — exams visible to assigned students (within time window)
 exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
-    // Only show exams that have at least one slot today AND student is assigned
+    // Show exams that are active, student is assigned, and at least one slot hasn't ended yet
     const [exams] = await pool.execute(`
       SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
@@ -673,14 +745,14 @@ exports.studentExamList = async (req, res) => {
       FROM exams e
       INNER JOIN exam_students ea ON ea.exam_id = e.id AND ea.student_id = ?
       WHERE e.status = 'active'
-        AND EXISTS (SELECT 1 FROM exam_slots s WHERE s.exam_id = e.id AND s.slot_date = CURDATE())
+        AND EXISTS (SELECT 1 FROM exam_slots s WHERE s.exam_id = e.id AND CONCAT(s.slot_date, ' ', s.end_time) > NOW())
       ORDER BY e.created_at DESC
     `, [userId, userId, userId, userId, userId]);
 
-    // Fetch only today's slots and question papers for each exam
+    // Fetch slots that haven't ended yet and question papers for each exam
     for (const exam of exams) {
       const [slots] = await pool.execute(
-        'SELECT * FROM exam_slots WHERE exam_id = ? AND slot_date = CURDATE() ORDER BY start_time',
+        'SELECT * FROM exam_slots WHERE exam_id = ? AND CONCAT(slot_date, \' \', end_time) > NOW() ORDER BY slot_date, start_time',
         [exam.id]
       );
       exam.slots = slots;

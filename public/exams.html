@@ -147,6 +147,14 @@
         <button class="btn btn-primary btn-sm" onclick="assignSelectedStudents()">Assign Selected</button>
       </div>
       <div class="checkbox-list" id="studentCheckboxList"></div>
+      <hr style="border-color:var(--border);margin:16px 0">
+      <h4 style="font-size:13px;color:var(--text-muted);margin-bottom:8px">Bulk Assign via CSV</h4>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">CSV format: <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;font-size:11px;color:var(--cyan)">name,app_id</code> (one per line) or just <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;font-size:11px;color:var(--cyan)">app_id</code> per line</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" id="assignCsvFile" class="form-control" style="flex:1" accept=".csv,.txt">
+        <button class="btn btn-primary btn-sm" onclick="uploadAssignCSV()">Upload CSV</button>
+      </div>
+      <div id="csvAssignResult" style="font-size:12px;margin-top:4px"></div>
       <input type="hidden" id="assignExamId">
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-secondary" onclick="closeAssignModal()">Close</button>
@@ -622,6 +630,51 @@
       } catch (err) {
         showToast(err.message, 'error');
       }
+    }
+
+    function uploadAssignCSV() {
+      const examId = document.getElementById('assignExamId').value;
+      const fileInput = document.getElementById('assignCsvFile');
+      const resultEl = document.getElementById('csvAssignResult');
+
+      if (!fileInput.files.length) {
+        showToast('Select a CSV file first', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('csv_file', fileInput.files[0]);
+      resultEl.innerHTML = '<span style="color:var(--accent)">Processing...</span>';
+
+      const xhr = new XMLHttpRequest();
+      xhr.addEventListener('load', () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            const errList = data.data.errors && data.data.errors.length > 0
+              ? `<br><span style="color:var(--red)">Not found: ${data.data.errors.join(', ')}</span>`
+              : '';
+            resultEl.innerHTML = `<span style="color:var(--green)">${data.data.added} assigned</span>, <span style="color:var(--text-muted)">${data.data.skipped} skipped</span>${errList}`;
+            showToast(data.message);
+            fileInput.value = '';
+            refreshAssignedStudents(examId);
+            loadAllStudentsForCheckbox(examId);
+          } else {
+            resultEl.innerHTML = `<span style="color:var(--red)">${data.message}</span>`;
+            showToast(data.message || 'Upload failed', 'error');
+          }
+        } catch {
+          resultEl.innerHTML = '<span style="color:var(--red)">Upload failed</span>';
+          showToast('Upload failed', 'error');
+        }
+      });
+      xhr.addEventListener('error', () => {
+        resultEl.innerHTML = '<span style="color:var(--red)">Network error</span>';
+        showToast('Network error', 'error');
+      });
+
+      xhr.open('POST', `/exams/${examId}/assign-students-csv`);
+      xhr.send(formData);
     }
 
     function esc(str) {
