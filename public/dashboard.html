@@ -3,23 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalVault — Dashboard</title>
+  <title>ATLAS Exam — Dashboard</title>
   <link rel="stylesheet" href="/assets/style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    .main-content.dashboard-main {
-      background: #f4f6f9;
-      min-height: 100vh;
-      padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
     .dashboard-wrapper {
       max-width: 960px;
       margin: 0 auto;
       padding: 48px 24px 60px;
     }
-
-    /* ── Welcome section ─────────────────── */
     .welcome-section {
       text-align: center;
       margin-bottom: 40px;
@@ -28,9 +19,9 @@
       width: 68px;
       height: 68px;
       border-radius: 18px;
-      background: #2ecc71;
+      background: var(--accent);
       color: #fff;
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-heading);
       font-weight: 700;
       font-size: 30px;
       display: inline-flex;
@@ -40,21 +31,16 @@
       box-shadow: 0 4px 14px rgba(46, 204, 113, 0.3);
     }
     .welcome-section h1 {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-heading);
       font-weight: 700;
       font-size: 26px;
-      color: #1a1a2e;
+      color: var(--text);
       margin-bottom: 6px;
-      letter-spacing: -0.3px;
     }
     .welcome-section p {
-      color: #8a8fa8;
+      color: var(--text-muted);
       font-size: 15px;
-      font-family: 'Inter', sans-serif;
-      font-weight: 400;
     }
-
-    /* ── Navigation card grid ────────────── */
     .nav-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -66,10 +52,9 @@
     @media (max-width: 480px) {
       .nav-grid { grid-template-columns: 1fr; }
     }
-
     .nav-card {
-      background: #fff;
-      border: 1px solid #e2e6ed;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 14px;
       padding: 32px 20px 28px;
       text-align: center;
@@ -77,13 +62,13 @@
       transition: all 0.2s ease;
       text-decoration: none;
       display: block;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     }
     .nav-card:hover {
-      border-color: #c5cad6;
+      border-color: var(--border-light);
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
       transform: translateY(-2px);
     }
-
     .nav-card .card-icon {
       width: 44px;
       height: 44px;
@@ -91,35 +76,30 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #5a6178;
+      color: var(--text-muted);
     }
-    .nav-card:hover .card-icon {
-      color: #3a4a6b;
-    }
-
+    .nav-card:hover .card-icon { color: var(--text); }
     .nav-card .card-title {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-heading);
       font-weight: 600;
       font-size: 15px;
-      color: #1a1a2e;
+      color: var(--text);
       margin-bottom: 4px;
     }
     .nav-card .card-desc {
-      font-family: 'Inter', sans-serif;
       font-size: 13px;
-      color: #8a8fa8;
-      font-weight: 400;
+      color: var(--text-muted);
       line-height: 1.4;
     }
   </style>
 </head>
 <body>
   <div class="app-layout" id="app">
-    <main class="main-content dashboard-main">
+    <main class="main-content">
       <div class="dashboard-wrapper">
         <div class="welcome-section">
           <div class="welcome-avatar" id="avatar"></div>
-          <h1 id="welcomeTitle">Welcome to LocalVault</h1>
+          <h1 id="welcomeTitle">Welcome to ATLAS Exam</h1>
           <p id="welcomeDesc">Select a section from the sidebar to get started</p>
         </div>
         <div class="nav-grid" id="navGrid"></div>
@@ -141,7 +121,7 @@
       document.getElementById('avatar').textContent = initial;
 
       // Welcome text
-      document.getElementById('welcomeTitle').textContent = `Welcome to LocalVault`;
+      document.getElementById('welcomeTitle').textContent = `Welcome to ATLAS Exam`;
       document.getElementById('welcomeDesc').textContent = 'Select a section from the sidebar to get started';
 
       // Build nav cards based on role

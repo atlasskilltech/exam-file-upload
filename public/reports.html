@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LocalVault — Reports</title>
+  <title>ATLAS Exam — Reports</title>
   <link rel="stylesheet" href="/assets/style.css">
   <!-- Chart.js CDN (works offline if cached, graceful fallback) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -108,7 +108,7 @@
 
   <script src="/assets/app.js"></script>
   <script>
-    const chartColors = ['#e8ff47', '#47ffd4', '#ff4757', '#3498db', '#9b59b6', '#f39c12', '#1abc9c', '#e74c3c'];
+    const chartColors = ['#2ecc71', '#0ea5e9', '#ef4444', '#8b5cf6', '#f59e0b', '#14b8a6', '#ec4899', '#6366f1'];
 
     (async () => {
       const user = await checkAuth();
@@ -142,7 +142,7 @@
                 datasets: [{
                   data: d.byType.map(t => t.count),
                   backgroundColor: chartColors.slice(0, d.byType.length),
-                  borderColor: '#161616',
+                  borderColor: '#e2e6ed',
                   borderWidth: 2
                 }]
               },
@@ -150,7 +150,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                  legend: { position: 'bottom', labels: { color: '#e0e0e0', font: { family: 'DM Mono' } } }
+                  legend: { position: 'bottom', labels: { color: '#1a1a2e', font: { family: 'Inter' } } }
                 }
               }
             });
@@ -165,7 +165,7 @@
                 datasets: [{
                   label: 'Files',
                   data: d.topUploaders.map(u => u.count),
-                  backgroundColor: '#e8ff47',
+                  backgroundColor: '#2ecc71',
                   borderRadius: 4
                 }]
               },
@@ -173,8 +173,8 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                  x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } },
-                  y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true }
+                  x: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' } },
+                  y: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' }, beginAtZero: true }
                 },
                 plugins: {
                   legend: { display: false }
@@ -192,7 +192,7 @@
                 datasets: [{
                   label: 'Files',
                   data: d.byCategory.map(c => c.count),
-                  backgroundColor: '#47ffd4',
+                  backgroundColor: '#0ea5e9',
                   borderRadius: 4
                 }]
               },
@@ -201,8 +201,8 @@
                 maintainAspectRatio: false,
                 indexAxis: 'y',
                 scales: {
-                  x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true },
-                  y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } }
+                  x: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' }, beginAtZero: true },
+                  y: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' } }
                 },
                 plugins: {
                   legend: { display: false }
@@ -255,15 +255,15 @@
                   datasets: [{
                     label: 'Submissions',
                     data: ed.subsPerExam.map(e => e.count),
-                    backgroundColor: '#e8ff47',
+                    backgroundColor: '#2ecc71',
                     borderRadius: 4
                   }]
                 },
                 options: {
                   responsive: true, maintainAspectRatio: false,
                   scales: {
-                    x: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' } },
-                    y: { ticks: { color: '#888', font: { family: 'DM Mono' } }, grid: { color: '#2a2a2a' }, beginAtZero: true }
+                    x: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' } },
+                    y: { ticks: { color: '#6b7280', font: { family: 'Inter' } }, grid: { color: '#e2e6ed' }, beginAtZero: true }
                   },
                   plugins: { legend: { display: false } }
                 }
