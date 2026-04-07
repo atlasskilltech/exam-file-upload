@@ -116,6 +116,30 @@ CREATE TABLE IF NOT EXISTS exam_students (
   UNIQUE KEY unique_exam_student (exam_id, student_id)
 );
 
+-- ── Performance indexes for 500+ concurrent students ──────
+-- Exam slots: fast lookup by exam + time window
+CREATE INDEX IF NOT EXISTS idx_exam_slots_exam_date ON exam_slots(exam_id, slot_date, start_time, end_time);
+
+-- Exam submissions: fast lookup by exam+student
+CREATE INDEX IF NOT EXISTS idx_exam_subs_exam_student ON exam_submissions(exam_id, student_id);
+
+-- Exam students: fast assignment lookups
+CREATE INDEX IF NOT EXISTS idx_exam_students_exam ON exam_students(exam_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_exam_students_student ON exam_students(student_id, exam_id);
+
+-- Question papers: fast lookup by exam
+CREATE INDEX IF NOT EXISTS idx_exam_qp_exam ON exam_question_papers(exam_id);
+
+-- Activity log: fast recent lookups
+CREATE INDEX IF NOT EXISTS idx_activity_log_user ON activity_log(user_id, created_at);
+
+-- Users: fast student lookup by app_id
+CREATE INDEX IF NOT EXISTS idx_users_app_id ON users(app_id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
+-- Exams: fast status filter
+CREATE INDEX IF NOT EXISTS idx_exams_status ON exams(status);
+
 -- Seed users
 -- admin login: username=admin, password=admin123
 -- students login with app_id only (no password needed)
