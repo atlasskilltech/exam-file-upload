@@ -30,6 +30,11 @@
     .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--accent-dim); }
     .warning-text { color: var(--red); font-size: 12px; margin: 12px 0; }
     .submitted-file { font-size: 12px; color: var(--green); margin-top: 4px; word-break: break-all; }
+    .qp-section { margin: 8px 0; padding: 8px; background: var(--surface-2); border-radius: 4px; border: 1px solid var(--border); }
+    .qp-section .qp-title { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .qp-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+    .qp-item .qp-name { color: var(--cyan); flex: 1; word-break: break-all; }
+    .qp-item .qp-size { color: var(--text-muted); font-size: 11px; }
   </style>
 </head>
 <body>
@@ -205,11 +210,27 @@
             actionBtns = `<button class="btn btn-primary btn-sm" onclick="openUploadModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', false)">Upload Answer</button>`;
           }
 
+          // Question papers section
+          const papers = e.question_papers || [];
+          const papersHTML = papers.length > 0 ? `
+            <div class="qp-section">
+              <div class="qp-title">Question Papers</div>
+              ${papers.map(p => `
+                <div class="qp-item">
+                  <span class="qp-name">${esc(p.original_name)}</span>
+                  <span class="qp-size">${formatSize(p.size_bytes)}</span>
+                  <a href="/exams/question-papers/download/${p.id}" class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px">Download</a>
+                </div>
+              `).join('')}
+            </div>
+          ` : '';
+
           return `
             <div class="exam-card">
               <div class="title">${esc(e.title)}</div>
               <span class="subject-badge">${esc(e.subject)}</span>
               <div style="margin:8px 0">${slotListHTML}</div>
+              ${papersHTML}
               ${statusBadge}
               <div style="margin-top:12px">${actionBtns}</div>
             </div>

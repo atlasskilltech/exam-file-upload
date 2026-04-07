@@ -91,6 +91,31 @@ CREATE TABLE IF NOT EXISTS exam_submissions (
   FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Question papers uploaded by admin for each exam
+CREATE TABLE IF NOT EXISTS exam_question_papers (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  exam_id        INT NOT NULL,
+  original_name  VARCHAR(255) NOT NULL,
+  stored_name    VARCHAR(255) NOT NULL,
+  mime_type      VARCHAR(100),
+  size_bytes     BIGINT,
+  uploaded_by    INT,
+  uploaded_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (exam_id)     REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Student-exam assignment (which students are assigned to which exams)
+CREATE TABLE IF NOT EXISTS exam_students (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  exam_id     INT NOT NULL,
+  student_id  INT NOT NULL,
+  assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (exam_id)    REFERENCES exams(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_exam_student (exam_id, student_id)
+);
+
 -- Seed users
 -- admin login: username=admin, password=admin123
 -- students login with app_id only (no password needed)

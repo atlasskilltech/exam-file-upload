@@ -14,6 +14,9 @@
     .slot-tag .room { color: var(--accent); }
     .status-active { color: var(--green); }
     .status-closed { color: var(--text-muted); }
+    .qp-banner { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .qp-banner a { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--cyan); text-decoration: none; }
+    .qp-banner a:hover { border-color: var(--accent); color: var(--accent); }
   </style>
 </head>
 <body>
@@ -85,6 +88,18 @@
           `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}</span>`
         ).join('') || '<span style="color:var(--text-muted)">No slots</span>';
 
+        // Load question papers for this exam
+        let papersHTML = '';
+        try {
+          const papersRes = await apiFetch(`/exams/${examId}/question-papers`);
+          if (papersRes.data.length > 0) {
+            papersHTML = `<div class="qp-banner" style="margin-top:8px">
+              <span style="font-size:11px;color:var(--text-muted);align-self:center">Question Papers:</span>
+              ${papersRes.data.map(p => `<a href="/exams/question-papers/download/${p.id}">${esc(p.original_name)} (${formatSize(p.size_bytes)})</a>`).join('')}
+            </div>`;
+          }
+        } catch {}
+
         document.getElementById('examBanner').innerHTML = `
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
             <div>
@@ -94,6 +109,7 @@
                 <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
               </div>
               <div style="margin-top:6px">${slotTags}</div>
+              ${papersHTML}
             </div>
             <div style="font-family:var(--font-heading);font-weight:700;font-size:24px;color:var(--accent)">
               ${submissions.length} <span style="font-size:12px;color:var(--text-muted);font-weight:400">submissions</span>
