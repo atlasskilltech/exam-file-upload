@@ -25,6 +25,7 @@ if (cluster.isPrimary && process.env.NO_CLUSTER !== '1') {
 function startServer() {
   const express = require('express');
   const session = require('express-session');
+  const MySQLStore = require('express-mysql-session')(session);
   const compression = require('compression');
   const path = require('path');
   require('dotenv').config();
@@ -39,9 +40,21 @@ function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // ── Session store — MySQL-backed so sessions survive across workers ──
+  const sessionStore = new MySQLStore({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    clearExpired: true,
+    checkExpirationInterval: 900000, // 15 min
+    expiration: 1000 * 60 * 60 * 8  // 8 hours
+  });
+
   // ── Session configuration ───────────────────────────────────
   app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback_secret',
+    store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
