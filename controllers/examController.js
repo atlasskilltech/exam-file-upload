@@ -5,6 +5,8 @@ const path = require('path');
 const fs = require('fs');
 
 const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
+const PAPERS_BASE = path.join(__dirname, '..', 'uploads', 'exam_papers');
+fs.mkdirSync(PAPERS_BASE, { recursive: true });
 
 // ── Helper: build folder name from exam + slot ────────────
 // Format: "{ExamTitle} - {Room} - {Date} - {Start}-{End}"
@@ -193,6 +195,10 @@ exports.deleteExam = async (req, res) => {
     // Also clean up legacy folder if exists
     const legacyDir = path.join(SUBMISSIONS_BASE, `exam_${examId}`);
     if (fs.existsSync(legacyDir)) fs.rmSync(legacyDir, { recursive: true, force: true });
+
+    // Clean up question paper files
+    const paperDir = path.join(PAPERS_BASE, `exam_${examId}`);
+    if (fs.existsSync(paperDir)) fs.rmSync(paperDir, { recursive: true, force: true });
 
     await pool.execute('DELETE FROM exams WHERE id = ?', [examId]);
 
@@ -431,16 +437,233 @@ exports.examStats = async (req, res) => {
   }
 };
 
+// ── Question Paper Management ─────────────────────────────
+
+// POST /exams/:id/question-papers — upload question paper(s)
+exports.uploadQuestionPaper = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const user = req.session.user;
+
+    const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
+    if (exams.length === 0) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const file = req.file;
+    const tempPath = file.path;
+
+    // Move to exam_papers/{exam_id}/
+    const paperDir = path.join(PAPERS_BASE, `exam_${examId}`);
+    fs.mkdirSync(paperDir, { recursive: true });
+
+    const ext = path.extname(file.originalname);
+    const storedName = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
+    const destPath = path.join(paperDir, storedName);
+
+    fs.copyFileSync(tempPath, destPath);
+    fs.unlinkSync(tempPath);
+
+    const [result] = await pool.execute(
+      `INSERT INTO exam_question_papers (exam_id, original_name, stored_name, mime_type, size_bytes, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [examId, file.originalname, storedName, file.mimetype, file.size, user.id]
+    );
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [user.id, 'uploaded question paper', exams[0].title + ' - ' + file.originalname]
+    );
+
+    return res.json({ success: true, data: { id: result.insertId } });
+  } catch (err) {
+    console.error('Upload question paper error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to upload question paper' });
+  }
+};
+
+// GET /exams/:id/question-papers — list question papers for an exam
+exports.listQuestionPapers = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const [papers] = await pool.execute(
+      `SELECT qp.*, u.username AS uploaded_by_name
+       FROM exam_question_papers qp
+       LEFT JOIN users u ON qp.uploaded_by = u.id
+       WHERE qp.exam_id = ?
+       ORDER BY qp.uploaded_at DESC`,
+      [examId]
+    );
+    return res.json({ success: true, data: papers });
+  } catch (err) {
+    console.error('List question papers error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch question papers' });
+  }
+};
+
+// GET /exams/question-papers/download/:id — download a question paper
+exports.downloadQuestionPaper = async (req, res) => {
+  try {
+    const paperId = req.params.id;
+    const user = req.session.user;
+
+    const [rows] = await pool.execute(
+      'SELECT qp.*, e.title AS exam_title FROM exam_question_papers qp LEFT JOIN exams e ON qp.exam_id = e.id WHERE qp.id = ?',
+      [paperId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Question paper not found' });
+    }
+
+    const paper = rows[0];
+
+    // If student, verify they are assigned to this exam
+    if (user.role === 'student') {
+      const [assigned] = await pool.execute(
+        'SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?',
+        [paper.exam_id, user.id]
+      );
+      if (assigned.length === 0) {
+        return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
+      }
+    }
+
+    const filePath = path.join(PAPERS_BASE, `exam_${paper.exam_id}`, paper.stored_name);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'File not found on disk' });
+    }
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [user.id, 'downloaded question paper', paper.exam_title + ' - ' + paper.original_name]
+    );
+
+    res.download(filePath, paper.original_name);
+  } catch (err) {
+    console.error('Download question paper error:', err);
+    return res.status(500).json({ success: false, message: 'Download failed' });
+  }
+};
+
+// DELETE /exams/question-papers/:id — delete a question paper
+exports.deleteQuestionPaper = async (req, res) => {
+  try {
+    const paperId = req.params.id;
+
+    const [rows] = await pool.execute('SELECT * FROM exam_question_papers WHERE id = ?', [paperId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Question paper not found' });
+    }
+
+    const paper = rows[0];
+    const filePath = path.join(PAPERS_BASE, `exam_${paper.exam_id}`, paper.stored_name);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    await pool.execute('DELETE FROM exam_question_papers WHERE id = ?', [paperId]);
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [req.session.user.id, 'deleted question paper', paper.original_name]
+    );
+
+    return res.json({ success: true, message: 'Question paper deleted' });
+  } catch (err) {
+    console.error('Delete question paper error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to delete question paper' });
+  }
+};
+
+// ── Student Assignment Management ─────────────────────────
+
+// GET /exams/:id/assigned-students — list students assigned to an exam
+exports.getAssignedStudents = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const [rows] = await pool.execute(
+      `SELECT es.id AS assignment_id, es.assigned_at, u.id AS student_id, u.username, u.app_id
+       FROM exam_students es
+       LEFT JOIN users u ON es.student_id = u.id
+       WHERE es.exam_id = ?
+       ORDER BY u.username`,
+      [examId]
+    );
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('Get assigned students error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to fetch assigned students' });
+  }
+};
+
+// POST /exams/:id/assign-students — assign students to an exam
+exports.assignStudents = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const { student_ids } = req.body;
+
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Provide an array of student_ids' });
+    }
+
+    const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
+    if (exams.length === 0) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    let added = 0;
+    for (const sid of student_ids) {
+      try {
+        await pool.execute(
+          'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+          [examId, sid]
+        );
+        added++;
+      } catch (e) {
+        // skip duplicates or invalid refs
+      }
+    }
+
+    await pool.execute(
+      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
+      [req.session.user.id, 'assigned students to exam', exams[0].title + ' (' + added + ' students)']
+    );
+
+    return res.json({ success: true, message: `${added} student(s) assigned`, data: { added } });
+  } catch (err) {
+    console.error('Assign students error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to assign students' });
+  }
+};
+
+// DELETE /exams/:id/unassign-student/:studentId — remove student from exam
+exports.unassignStudent = async (req, res) => {
+  try {
+    const { id: examId, studentId } = req.params;
+    await pool.execute(
+      'DELETE FROM exam_students WHERE exam_id = ? AND student_id = ?',
+      [examId, studentId]
+    );
+    return res.json({ success: true, message: 'Student removed from exam' });
+  } catch (err) {
+    console.error('Unassign student error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to unassign student' });
+  }
+};
+
 // ════════════════════════════════════════════════════════════
 // STUDENT ENDPOINTS
 // ════════════════════════════════════════════════════════════
 
-// GET /exams/student/list — only today's exams visible to students
+// GET /exams/student/list — only today's exams visible to assigned students
 exports.studentExamList = async (req, res) => {
   try {
     const userId = req.session.user.id;
 
-    // Only show exams that have at least one slot today
+    // Only show exams that have at least one slot today AND student is assigned
     const [exams] = await pool.execute(`
       SELECT e.*,
         (SELECT COUNT(*) FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ?) AS submitted,
@@ -448,18 +671,25 @@ exports.studentExamList = async (req, res) => {
         (SELECT sub.original_name FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_file,
         (SELECT sub.submitted_at FROM exam_submissions sub WHERE sub.exam_id = e.id AND sub.student_id = ? LIMIT 1) AS submission_date
       FROM exams e
+      INNER JOIN exam_students ea ON ea.exam_id = e.id AND ea.student_id = ?
       WHERE e.status = 'active'
         AND EXISTS (SELECT 1 FROM exam_slots s WHERE s.exam_id = e.id AND s.slot_date = CURDATE())
       ORDER BY e.created_at DESC
-    `, [userId, userId, userId, userId]);
+    `, [userId, userId, userId, userId, userId]);
 
-    // Fetch only today's slots for each exam
+    // Fetch only today's slots and question papers for each exam
     for (const exam of exams) {
       const [slots] = await pool.execute(
         'SELECT * FROM exam_slots WHERE exam_id = ? AND slot_date = CURDATE() ORDER BY start_time',
         [exam.id]
       );
       exam.slots = slots;
+
+      const [papers] = await pool.execute(
+        'SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at',
+        [exam.id]
+      );
+      exam.question_papers = papers;
     }
 
     return res.json({ success: true, data: exams });
@@ -469,11 +699,20 @@ exports.studentExamList = async (req, res) => {
   }
 };
 
-// GET /exams/student/:id — single exam detail
+// GET /exams/student/:id — single exam detail (must be assigned)
 exports.studentExamDetail = async (req, res) => {
   try {
     const examId = req.params.id;
     const userId = req.session.user.id;
+
+    // Check assignment
+    const [assigned] = await pool.execute(
+      'SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?',
+      [examId, userId]
+    );
+    if (assigned.length === 0) {
+      return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
+    }
 
     const [exams] = await pool.execute('SELECT * FROM exams WHERE id = ?', [examId]);
     if (exams.length === 0) {
@@ -490,9 +729,14 @@ exports.studentExamDetail = async (req, res) => {
       [examId, userId]
     );
 
+    const [papers] = await pool.execute(
+      'SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at',
+      [examId]
+    );
+
     return res.json({
       success: true,
-      data: { exam: exams[0], slots, submission: subs[0] || null }
+      data: { exam: exams[0], slots, submission: subs[0] || null, question_papers: papers }
     });
   } catch (err) {
     console.error('Student exam detail error:', err);
@@ -512,6 +756,16 @@ exports.submitAnswer = async (req, res) => {
     }
 
     const exam = exams[0];
+
+    // Check student is assigned to this exam
+    const [assigned] = await pool.execute(
+      'SELECT id FROM exam_students WHERE exam_id = ? AND student_id = ?',
+      [examId, userId]
+    );
+    if (assigned.length === 0) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
+    }
 
     if (exam.status !== 'active') {
       return res.status(400).json({ success: false, message: 'Exam is closed, submissions not accepted' });

@@ -19,6 +19,20 @@ router.get('/:id/slots', requireAdmin, ctrl.getSlots);
 router.post('/:id/slots', requireAdmin, ctrl.addSlot);
 router.delete('/slots/:slotId', requireAdmin, ctrl.deleteSlot);
 
+// Question paper management (admin)
+router.post('/:id/question-papers', requireAdmin,
+  examUpload.single('question_paper'), ctrl.uploadQuestionPaper);
+router.get('/:id/question-papers', requireAdmin, ctrl.listQuestionPapers);
+router.delete('/question-papers/:id', requireAdmin, ctrl.deleteQuestionPaper);
+
+// Question paper download (admin + students)
+router.get('/question-papers/download/:id', ctrl.downloadQuestionPaper);
+
+// Student assignment management (admin)
+router.get('/:id/assigned-students', requireAdmin, ctrl.getAssignedStudents);
+router.post('/:id/assign-students', requireAdmin, ctrl.assignStudents);
+router.delete('/:id/unassign-student/:studentId', requireAdmin, ctrl.unassignStudent);
+
 // Submissions
 router.get('/:id/submissions', requireAdmin, ctrl.listSubmissions);
 router.get('/submissions/download/:id', ctrl.downloadSubmission);

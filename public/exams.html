@@ -18,6 +18,15 @@
     .slot-tag { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 11px; color: var(--cyan); margin: 2px 4px 2px 0; }
     .slot-tag .room { color: var(--accent); }
     .remove-slot { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; padding: 0 4px; }
+    .paper-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .paper-item .name { color: var(--cyan); word-break: break-all; flex: 1; }
+    .paper-item .size { color: var(--text-muted); font-size: 11px; margin: 0 8px; white-space: nowrap; }
+    .assign-student-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .assign-student-item .info { flex: 1; }
+    .assign-student-item .app-id { color: var(--accent); font-size: 11px; }
+    .checkbox-list { max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px; margin: 8px 0; }
+    .checkbox-list label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+    .checkbox-list label:hover { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -107,6 +116,44 @@
     </div>
   </div>
 
+  <!-- Question Papers Modal -->
+  <div class="modal-overlay" id="papersModal">
+    <div class="modal" style="max-width:560px">
+      <h3>Question Papers — <span id="papersExamTitle"></span></h3>
+      <div id="papersList" style="margin-bottom:16px"></div>
+      <hr style="border-color:var(--border);margin:16px 0">
+      <h4 style="font-size:13px;color:var(--text-muted);margin-bottom:8px">Upload Question Paper</h4>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" id="questionPaperFile" class="form-control" style="flex:1" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.zip,.xls,.xlsx,.ppt,.pptx">
+        <button class="btn btn-primary btn-sm" onclick="uploadQuestionPaper()">Upload</button>
+      </div>
+      <div id="paperUploadProgress" style="font-size:12px;color:var(--accent);margin-top:4px"></div>
+      <input type="hidden" id="papersExamId">
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="closePapersModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assign Students Modal -->
+  <div class="modal-overlay" id="assignModal">
+    <div class="modal" style="max-width:560px">
+      <h3>Assign Students — <span id="assignExamTitle"></span></h3>
+      <div id="assignedStudentsList" style="margin-bottom:16px"></div>
+      <hr style="border-color:var(--border);margin:16px 0">
+      <h4 style="font-size:13px;color:var(--text-muted);margin-bottom:8px">Add Students</h4>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" class="form-control" id="studentSearchInput" placeholder="Search students..." style="flex:1" oninput="filterStudentCheckboxes()">
+        <button class="btn btn-primary btn-sm" onclick="assignSelectedStudents()">Assign Selected</button>
+      </div>
+      <div class="checkbox-list" id="studentCheckboxList"></div>
+      <input type="hidden" id="assignExamId">
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" onclick="closeAssignModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/assets/app.js"></script>
   <script>
     // Parse date/time from MySQL (may come as ISO or raw)
@@ -167,6 +214,8 @@
               <td>${e.submission_count || 0}</td>
               <td style="white-space:nowrap">
                 <button class="btn btn-secondary btn-sm" onclick="openSlotsModal(${e.id}, '${escAttr(e.title)}')">Slots</button>
+                <button class="btn btn-secondary btn-sm" onclick="openPapersModal(${e.id}, '${escAttr(e.title)}')">Papers</button>
+                <button class="btn btn-secondary btn-sm" onclick="openAssignModal(${e.id}, '${escAttr(e.title)}')">Students</button>
                 <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm">View</a>
                 <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', ${JSON.stringify(e.slots || []).replace(/"/g, '&quot;')})">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')">${e.status === 'active' ? 'Close' : 'Open'}</button>
@@ -368,6 +417,211 @@
         showToast('Exam deleted');
         loadExams();
       } catch (err) { showToast(err.message, 'error'); }
+    }
+
+    // ── Question Papers Modal ──────────────────────────────
+    async function openPapersModal(examId, title) {
+      document.getElementById('papersExamTitle').textContent = title;
+      document.getElementById('papersExamId').value = examId;
+      document.getElementById('questionPaperFile').value = '';
+      document.getElementById('paperUploadProgress').textContent = '';
+      document.getElementById('papersModal').classList.add('active');
+      await refreshPapersList(examId);
+    }
+
+    function closePapersModal() {
+      document.getElementById('papersModal').classList.remove('active');
+    }
+
+    async function refreshPapersList(examId) {
+      try {
+        const res = await apiFetch(`/exams/${examId}/question-papers`);
+        const container = document.getElementById('papersList');
+        if (res.data.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No question papers uploaded yet.</p>';
+        } else {
+          container.innerHTML = res.data.map(p => `
+            <div class="paper-item">
+              <span class="name">${esc(p.original_name)}</span>
+              <span class="size">${formatSize(p.size_bytes)}</span>
+              <a href="/exams/question-papers/download/${p.id}" class="btn btn-secondary btn-sm">Download</a>
+              <button class="btn btn-danger btn-sm" onclick="deleteQuestionPaper(${p.id})" style="margin-left:4px">Del</button>
+            </div>
+          `).join('');
+        }
+      } catch {
+        document.getElementById('papersList').innerHTML = '<p style="color:var(--red)">Failed to load papers</p>';
+      }
+    }
+
+    function uploadQuestionPaper() {
+      const examId = document.getElementById('papersExamId').value;
+      const fileInput = document.getElementById('questionPaperFile');
+      if (!fileInput.files.length) {
+        showToast('Select a file first', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('question_paper', fileInput.files[0]);
+
+      const progressEl = document.getElementById('paperUploadProgress');
+      progressEl.textContent = 'Uploading...';
+
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          progressEl.textContent = `Uploading... ${pct}%`;
+        }
+      });
+      xhr.addEventListener('load', () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (data.success) {
+            showToast('Question paper uploaded');
+            fileInput.value = '';
+            progressEl.textContent = '';
+            refreshPapersList(examId);
+          } else {
+            showToast(data.message || 'Upload failed', 'error');
+            progressEl.textContent = '';
+          }
+        } catch {
+          showToast('Upload failed', 'error');
+          progressEl.textContent = '';
+        }
+      });
+      xhr.addEventListener('error', () => {
+        showToast('Network error', 'error');
+        progressEl.textContent = '';
+      });
+
+      xhr.open('POST', `/exams/${examId}/question-papers`);
+      xhr.send(formData);
+    }
+
+    async function deleteQuestionPaper(paperId) {
+      const examId = document.getElementById('papersExamId').value;
+      try {
+        await apiFetch(`/exams/question-papers/${paperId}`, { method: 'DELETE' });
+        showToast('Question paper deleted');
+        await refreshPapersList(examId);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    // ── Assign Students Modal ────────────────────────────
+    let allStudents = [];
+
+    async function openAssignModal(examId, title) {
+      document.getElementById('assignExamTitle').textContent = title;
+      document.getElementById('assignExamId').value = examId;
+      document.getElementById('studentSearchInput').value = '';
+      document.getElementById('assignModal').classList.add('active');
+      await refreshAssignedStudents(examId);
+      await loadAllStudentsForCheckbox(examId);
+    }
+
+    function closeAssignModal() {
+      document.getElementById('assignModal').classList.remove('active');
+    }
+
+    async function refreshAssignedStudents(examId) {
+      try {
+        const res = await apiFetch(`/exams/${examId}/assigned-students`);
+        const container = document.getElementById('assignedStudentsList');
+        if (res.data.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No students assigned yet.</p>';
+        } else {
+          container.innerHTML = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${res.data.length} student(s) assigned</p>` +
+            res.data.map(s => `
+              <div class="assign-student-item">
+                <div class="info">
+                  <strong>${esc(s.username)}</strong>
+                  <span class="app-id">${esc(s.app_id || '')}</span>
+                </div>
+                <button class="btn btn-danger btn-sm" onclick="unassignStudent(${s.student_id})">Remove</button>
+              </div>
+            `).join('');
+        }
+      } catch {
+        document.getElementById('assignedStudentsList').innerHTML = '<p style="color:var(--red)">Failed to load</p>';
+      }
+    }
+
+    async function loadAllStudentsForCheckbox(examId) {
+      try {
+        const [studentsRes, assignedRes] = await Promise.all([
+          apiFetch('/exams/admin/students'),
+          apiFetch(`/exams/${examId}/assigned-students`)
+        ]);
+        allStudents = studentsRes.data;
+        const assignedIds = new Set(assignedRes.data.map(s => s.student_id));
+
+        renderStudentCheckboxes(allStudents.filter(s => !assignedIds.has(s.id)));
+      } catch {
+        document.getElementById('studentCheckboxList').innerHTML = '<p style="color:var(--red)">Failed to load students</p>';
+      }
+    }
+
+    function renderStudentCheckboxes(students) {
+      const container = document.getElementById('studentCheckboxList');
+      if (students.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:12px">All students already assigned</p>';
+        return;
+      }
+      container.innerHTML = students.map(s => `
+        <label>
+          <input type="checkbox" value="${s.id}" class="student-checkbox">
+          <span>${esc(s.username)}</span>
+          <span style="color:var(--accent);font-size:11px">${esc(s.app_id || '')}</span>
+        </label>
+      `).join('');
+    }
+
+    function filterStudentCheckboxes() {
+      const query = document.getElementById('studentSearchInput').value.toLowerCase();
+      document.querySelectorAll('#studentCheckboxList label').forEach(label => {
+        const text = label.textContent.toLowerCase();
+        label.style.display = text.includes(query) ? '' : 'none';
+      });
+    }
+
+    async function assignSelectedStudents() {
+      const examId = document.getElementById('assignExamId').value;
+      const checked = document.querySelectorAll('.student-checkbox:checked');
+      const studentIds = Array.from(checked).map(cb => parseInt(cb.value));
+
+      if (studentIds.length === 0) {
+        showToast('Select at least one student', 'error');
+        return;
+      }
+
+      try {
+        await apiFetch(`/exams/${examId}/assign-students`, {
+          method: 'POST',
+          body: JSON.stringify({ student_ids: studentIds })
+        });
+        showToast(`${studentIds.length} student(s) assigned`);
+        await refreshAssignedStudents(examId);
+        await loadAllStudentsForCheckbox(examId);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function unassignStudent(studentId) {
+      const examId = document.getElementById('assignExamId').value;
+      try {
+        await apiFetch(`/exams/${examId}/unassign-student/${studentId}`, { method: 'DELETE' });
+        showToast('Student removed');
+        await refreshAssignedStudents(examId);
+        await loadAllStudentsForCheckbox(examId);
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
     }
 
     function esc(str) {
