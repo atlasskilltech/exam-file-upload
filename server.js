@@ -5,12 +5,26 @@
 // Set Node.js timezone to IST
 process.env.TZ = 'Asia/Kolkata';
 
+const cluster = require('cluster');
+const os = require('os');
+require('dotenv').config();
+
+const WORKERS = parseInt(process.env.CLUSTER_WORKERS) || Math.min(os.cpus().length, 4);
+
+if (cluster.isPrimary && process.env.NO_CLUSTER !== '1') {
+  console.log(`Primary ${process.pid} starting ${WORKERS} workers...`);
+  for (let i = 0; i < WORKERS; i++) cluster.fork();
+  cluster.on('exit', (worker) => {
+    console.log(`Worker ${worker.process.pid} died, restarting...`);
+    cluster.fork();
+  });
+} else {
+
 const express = require('express');
 const session = require('express-session');
 const MySQLStore = require('express-mysql-session')(session);
 const compression = require('compression');
 const path = require('path');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,5 +97,7 @@ app.use((err, req, res, next) => {
 
 // ── Start server ─────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`ATLAS Exam running at http://localhost:${PORT}`);
+  console.log(`ATLAS Exam worker ${process.pid} running at http://localhost:${PORT}`);
 });
+
+} // end cluster worker
