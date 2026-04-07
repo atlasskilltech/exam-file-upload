@@ -13,11 +13,14 @@
     .status-active { color: var(--green); }
     .status-closed { color: var(--text-muted); }
     .slot-list { margin-top: 8px; }
-    .slot-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
-    .slot-row .form-control { width: auto; flex: 1; min-width: 100px; }
+    .slot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; padding: 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); position: relative; }
+    .slot-row .form-control { width: 100%; }
+    .slot-row .slot-label { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; display: block; }
+    .slot-row .slot-field { display: flex; flex-direction: column; }
+    .slot-row .slot-field-full { grid-column: 1 / -1; }
+    .remove-slot { position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--red); cursor: pointer; font-size: 18px; padding: 0; line-height: 1; }
     .slot-tag { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 11px; color: var(--cyan); margin: 2px 4px 2px 0; }
     .slot-tag .room { color: var(--accent); }
-    .remove-slot { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; padding: 0 4px; }
     .paper-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
     .paper-item .name { color: var(--cyan); word-break: break-all; flex: 1; }
     .paper-item .size { color: var(--text-muted); font-size: 11px; margin: 0 8px; white-space: nowrap; }
@@ -68,7 +71,7 @@
 
   <!-- Create/Edit Exam Modal -->
   <div class="modal-overlay" id="examModal">
-    <div class="modal" style="max-width:560px">
+    <div class="modal" style="max-width:520px">
       <h3 id="examModalTitle">Create Exam</h3>
       <form id="examForm">
         <input type="hidden" id="examEditId">
@@ -102,12 +105,26 @@
       <div id="existingSlots" style="margin-bottom:16px"></div>
       <hr style="border-color:var(--border);margin:16px 0">
       <h4 style="font-size:13px;color:var(--text-muted);margin-bottom:8px">Add New Slot</h4>
-      <div class="slot-row" id="newSlotRow">
-        <input type="date" class="form-control" id="newSlotDate">
-        <input type="time" class="form-control" id="newSlotStart">
-        <input type="time" class="form-control" id="newSlotEnd">
-        <input type="text" class="form-control" id="newSlotRoom" placeholder="Room">
-        <button type="button" class="btn btn-primary btn-sm" onclick="addNewSlot()">Add</button>
+      <div class="slot-row" id="newSlotRow" style="padding-bottom:48px">
+        <div class="slot-field">
+          <span class="slot-label">Date</span>
+          <input type="date" class="form-control" id="newSlotDate">
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">Room</span>
+          <input type="text" class="form-control" id="newSlotRoom" placeholder="e.g. Room 405">
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">Start Time</span>
+          <input type="time" class="form-control" id="newSlotStart">
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">End Time</span>
+          <input type="time" class="form-control" id="newSlotEnd">
+        </div>
+        <div class="slot-field-full" style="position:absolute;bottom:10px;right:14px">
+          <button type="button" class="btn btn-primary btn-sm" onclick="addNewSlot()">Add Slot</button>
+        </div>
       </div>
       <input type="hidden" id="slotsExamId">
       <div class="modal-actions" style="margin-top:16px">
@@ -249,11 +266,23 @@
       row.className = 'slot-row';
       row.id = `slot-row-${id}`;
       row.innerHTML = `
-        <input type="date" class="form-control slot-date" value="${data ? fmtDate(data.slot_date) : ''}" required>
-        <input type="time" class="form-control slot-start" value="${data ? fmtTime(data.start_time) : ''}" required>
-        <input type="time" class="form-control slot-end" value="${data ? fmtTime(data.end_time) : ''}" required>
-        <input type="text" class="form-control slot-room" value="${data?.room || ''}" placeholder="Room" required>
-        <button type="button" class="remove-slot" onclick="this.parentElement.remove()">x</button>
+        <div class="slot-field">
+          <span class="slot-label">Date</span>
+          <input type="date" class="form-control slot-date" value="${data ? fmtDate(data.slot_date) : ''}" required>
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">Room</span>
+          <input type="text" class="form-control slot-room" value="${data?.room || ''}" placeholder="e.g. Room 405" required>
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">Start Time</span>
+          <input type="time" class="form-control slot-start" value="${data ? fmtTime(data.start_time) : ''}" required>
+        </div>
+        <div class="slot-field">
+          <span class="slot-label">End Time</span>
+          <input type="time" class="form-control slot-end" value="${data ? fmtTime(data.end_time) : ''}" required>
+        </div>
+        <button type="button" class="remove-slot" onclick="this.parentElement.remove()">&times;</button>
       `;
       list.appendChild(row);
     }
