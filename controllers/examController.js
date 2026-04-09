@@ -424,6 +424,11 @@ exports.downloadAllSubmissionsZip = async (req, res) => {
 
     const exam = exams[0];
 
+    const [slots] = await pool.execute(
+      'SELECT room, slot_date, start_time, end_time FROM exam_slots WHERE exam_id = ? ORDER BY slot_date, start_time LIMIT 1',
+      [examId]
+    );
+
     const [submissions] = await pool.execute(`
       SELECT es.*, u.username AS student_name, u.app_id
       FROM exam_submissions es
@@ -436,7 +441,16 @@ exports.downloadAllSubmissionsZip = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No submissions to download' });
     }
 
-    const zipFilename = `${sanitize(exam.title)}_${sanitize(exam.subject)}_submissions.zip`;
+    // Build filename with room and time
+    let zipFilename = sanitize(exam.title) + '_' + sanitize(exam.subject);
+    if (slots.length > 0) {
+      const s = slots[0];
+      const date = formatDate(s.slot_date);
+      const start = String(s.start_time || '').slice(0, 5).replace(':', '');
+      const end = String(s.end_time || '').slice(0, 5).replace(':', '');
+      zipFilename += `_${sanitize(s.room)}_${date}_${start}-${end}`;
+    }
+    zipFilename += '_submissions.zip';
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
