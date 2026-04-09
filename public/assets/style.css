@@ -467,7 +467,10 @@ tbody tr:hover {
   background: rgba(0, 0, 0, 0.3);
   z-index: 5000;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 24px;
 }
 
 .modal-overlay.active { display: flex; }
@@ -479,6 +482,9 @@ tbody tr:hover {
   padding: 24px;
   max-width: 400px;
   width: 90%;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  margin: auto;
   animation: slideIn 0.2s ease;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
@@ -500,6 +506,12 @@ tbody tr:hover {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  position: sticky;
+  bottom: -24px;
+  background: var(--surface);
+  padding: 16px 0 0;
+  margin-top: 16px;
+  z-index: 1;
 }
 
 /* ── Upload area ───────────────────────────────────────────── */
@@ -662,16 +674,12 @@ tbody tr:hover {
   /* ── Modal responsive (tablet) ────────────────────────── */
   .modal-overlay {
     padding: 16px;
-    align-items: flex-start;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
   .modal {
     max-width: 100% !important;
     width: 100% !important;
-    margin: auto;
-    max-height: none;
+    max-height: calc(100vh - 32px);
     padding: 20px;
   }
 
@@ -753,6 +761,7 @@ tbody tr:hover {
   }
 
   .modal {
+    max-height: calc(100vh - 16px);
     padding: 16px;
     border-radius: 8px;
   }
