@@ -39,6 +39,7 @@ router.delete('/:id/unassign-student/:studentId', requireAdmin, ctrl.unassignStu
 router.get('/:id/submissions', requireAdmin, ctrl.listSubmissions);
 router.get('/submissions/download/:id', ctrl.downloadSubmission);
 router.get('/:id/submissions/export', requireAdmin, ctrl.exportCSV);
+router.get('/:id/submissions/download-zip', requireAdmin, ctrl.downloadAllSubmissionsZip);
 
 // Admin helpers
 router.get('/admin/students', requireAdmin, ctrl.listStudents);

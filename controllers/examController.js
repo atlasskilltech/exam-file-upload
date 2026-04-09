@@ -4,6 +4,7 @@ const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
+const archiver = require('archiver');
 
 const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
 const PAPERS_BASE = path.join(__dirname, '..', 'uploads', 'exam_papers');
@@ -396,6 +397,67 @@ exports.exportCSV = async (req, res) => {
   } catch (err) {
     console.error('Export CSV error:', err);
     return res.status(500).json({ success: false, message: 'Failed to export' });
+  }
+};
+
+// GET /exams/:id/submissions/download-zip
+exports.downloadAllSubmissionsZip = async (req, res) => {
+  try {
+    const examId = req.params.id;
+
+    const [exams] = await pool.execute('SELECT title, subject FROM exams WHERE id = ?', [examId]);
+    if (exams.length === 0) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const exam = exams[0];
+
+    const [submissions] = await pool.execute(`
+      SELECT es.*, u.username AS student_name, u.app_id
+      FROM exam_submissions es
+      LEFT JOIN users u ON es.student_id = u.id
+      WHERE es.exam_id = ?
+      ORDER BY u.username
+    `, [examId]);
+
+    if (submissions.length === 0) {
+      return res.status(404).json({ success: false, message: 'No submissions to download' });
+    }
+
+    const zipFilename = `${sanitize(exam.title)}_${sanitize(exam.subject)}_submissions.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Failed to create zip' });
+      }
+    });
+
+    archive.pipe(res);
+
+    for (const sub of submissions) {
+      const filePath = sub.folder_name
+        ? path.join(SUBMISSIONS_BASE, sub.folder_name, sub.stored_name)
+        : path.join(SUBMISSIONS_BASE, `exam_${sub.exam_id}`, `student_${sub.student_id}`, sub.stored_name);
+
+      if (fs.existsSync(filePath)) {
+        const studentLabel = sub.app_id || sub.student_name || `student_${sub.student_id}`;
+        const ext = path.extname(sub.original_name);
+        const nameInZip = `${sanitize(studentLabel)}-${sub.original_name}`;
+        archive.file(filePath, { name: nameInZip });
+      }
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    console.error('Download zip error:', err);
+    if (!res.headersSent) {
+      return res.status(500).json({ success: false, message: 'Failed to download zip' });
+    }
   }
 };
 

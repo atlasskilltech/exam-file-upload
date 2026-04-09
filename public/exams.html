@@ -264,6 +264,7 @@
                 <button class="btn btn-secondary btn-sm" onclick="openPapersModal(${e.id}, '${escAttr(e.title)}')">Papers</button>
                 <button class="btn btn-secondary btn-sm" onclick="openAssignModal(${e.id}, '${escAttr(e.title)}')">Students</button>
                 <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm">View</a>
+                <button class="btn btn-secondary btn-sm" onclick="downloadZip(${e.id})" ${(e.submission_count || 0) === 0 ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Download</button>
                 <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', ${JSON.stringify(e.slots || []).replace(/"/g, '&quot;')})">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')">${e.status === 'active' ? 'Close' : 'Open'}</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteExam(${e.id}, '${escAttr(e.title)}')">Del</button>
@@ -459,6 +460,11 @@
       } catch (err) {
         showToast(err.message, 'error');
       }
+    }
+
+    function downloadZip(examId) {
+      showToast('Preparing zip download...');
+      window.location.href = `/exams/${examId}/submissions/download-zip`;
     }
 
     async function toggleStatus(id, newStatus) {
