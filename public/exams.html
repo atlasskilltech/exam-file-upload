@@ -267,7 +267,6 @@
                 <button class="btn btn-secondary btn-sm" onclick="downloadZip(${e.id})" ${(e.submission_count || 0) === 0 ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Download</button>
                 <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', ${JSON.stringify(e.slots || []).replace(/"/g, '&quot;')})">Edit</button>
                 <button class="btn btn-secondary btn-sm" onclick="toggleStatus(${e.id}, '${e.status === 'active' ? 'closed' : 'active'}')">${e.status === 'active' ? 'Close' : 'Open'}</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteExam(${e.id}, '${escAttr(e.title)}')">Del</button>
                 </div>
               </td>
             </tr>`;
