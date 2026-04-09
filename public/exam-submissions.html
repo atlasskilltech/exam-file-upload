@@ -17,6 +17,18 @@
     .qp-banner { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .qp-banner a { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--cyan); text-decoration: none; }
     .qp-banner a:hover { border-color: var(--accent); color: var(--accent); }
+    .sub-stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .sub-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; text-align: center; flex: 1; min-width: 120px; }
+    .sub-stat .val { font-family: var(--font-heading); font-weight: 800; font-size: 28px; }
+    .sub-stat .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .not-submitted-list { margin-top: 8px; }
+    .not-submitted-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .not-submitted-item .app-id { color: var(--red); font-size: 11px; }
+    @media (max-width: 768px) {
+      .sub-stats { gap: 8px; }
+      .sub-stat { padding: 12px 16px; min-width: 80px; }
+      .sub-stat .val { font-size: 22px; }
+    }
   </style>
 </head>
 <body>
@@ -27,10 +39,15 @@
           <h1 id="pageTitle">Submissions</h1>
           <p><a href="/exams.html" style="color:var(--accent);text-decoration:none">Back to Exams</a></p>
         </div>
-        <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="downloadZip()">Download ZIP</button>
+          <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
       </div>
 
       <div class="exam-banner" id="examBanner">Loading exam info...</div>
+
+      <div class="sub-stats" id="subStats"></div>
 
       <div class="card" style="position:relative">
         <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
@@ -51,6 +68,11 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="card" id="notSubmittedCard" style="display:none">
+        <div class="card-header" style="color:var(--red)">Not Submitted Students</div>
+        <div class="not-submitted-list" id="notSubmittedList"></div>
       </div>
     </main>
   </div>
@@ -80,9 +102,21 @@
 
       try {
         const res = await apiFetch(`/exams/${examId}/submissions`);
-        const { exam, slots, submissions } = res.data;
+        const { exam, slots, submissions, assigned_count, not_submitted } = res.data;
 
         document.getElementById('pageTitle').textContent = `Submissions — ${exam.title}`;
+
+        // Stat boxes
+        const submittedCount = submissions.length;
+        const notSubmittedCount = not_submitted ? not_submitted.length : 0;
+        const totalAssigned = assigned_count || 0;
+
+        document.getElementById('subStats').innerHTML = `
+          <div class="sub-stat"><div class="val" style="color:var(--cyan)">${totalAssigned}</div><div class="lbl">Assigned</div></div>
+          <div class="sub-stat"><div class="val" style="color:var(--green)">${submittedCount}</div><div class="lbl">Submitted</div></div>
+          <div class="sub-stat"><div class="val" style="color:var(--red)">${notSubmittedCount}</div><div class="lbl">Not Submitted</div></div>
+          <div class="sub-stat"><div class="val" style="color:var(--accent)">${submittedCount}</div><div class="lbl">Total Files</div></div>
+        `;
 
         const slotTags = (slots || []).map(s =>
           `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}</span>`
@@ -100,20 +134,19 @@
           }
         } catch {}
 
+        // Exam description (if exists)
+        const descHTML = exam.description ? `<p style="color:var(--text-muted);font-size:13px;margin-top:4px">${esc(exam.description)}</p>` : '';
+
         document.getElementById('examBanner').innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
-            <div>
-              <h2>${esc(exam.title)}</h2>
-              <div class="meta">
-                <span>Subject: ${esc(exam.subject)}</span>
-                <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
-              </div>
-              <div style="margin-top:6px">${slotTags}</div>
-              ${papersHTML}
+          <div>
+            <h2>${esc(exam.title)}</h2>
+            ${descHTML}
+            <div class="meta" style="margin-top:8px">
+              <span>Subject: <strong>${esc(exam.subject)}</strong></span>
+              <span class="status-${exam.status}">${exam.status.toUpperCase()}</span>
             </div>
-            <div style="font-family:var(--font-heading);font-weight:700;font-size:24px;color:var(--accent)">
-              ${submissions.length} <span style="font-size:12px;color:var(--text-muted);font-weight:400">submissions</span>
-            </div>
+            <div style="margin-top:6px">${slotTags}</div>
+            ${papersHTML}
           </div>
         `;
 
@@ -124,7 +157,7 @@
           tbody.innerHTML = submissions.map((s, i) => `
             <tr>
               <td>${i + 1}</td>
-              <td>${esc(s.student_name)}</td>
+              <td>${esc(s.student_name)} <span style="color:var(--accent);font-size:11px">${esc(s.student_app_id || '')}</span></td>
               <td>${esc(s.original_name)}</td>
               <td>${formatSize(s.size_bytes)}</td>
               <td>${formatDate(s.submitted_at)}</td>
@@ -133,6 +166,21 @@
               </td>
             </tr>
           `).join('');
+        }
+
+        // Not submitted students card
+        const notSubmittedCard = document.getElementById('notSubmittedCard');
+        const notSubmittedList = document.getElementById('notSubmittedList');
+        if (not_submitted && not_submitted.length > 0) {
+          notSubmittedCard.style.display = 'block';
+          notSubmittedList.innerHTML = not_submitted.map(s => `
+            <div class="not-submitted-item">
+              <strong>${esc(s.username)}</strong>
+              <span class="app-id">${esc(s.app_id || '')}</span>
+            </div>
+          `).join('');
+        } else {
+          notSubmittedCard.style.display = 'none';
         }
       } catch (err) {
         showToast('Failed to load submissions', 'error');
@@ -143,6 +191,11 @@
 
     function exportCSV() {
       window.location.href = `/exams/${examId}/submissions/export`;
+    }
+
+    function downloadZip() {
+      showToast('Preparing zip download...');
+      window.location.href = `/exams/${examId}/submissions/download-zip`;
     }
 
     function esc(str) {
