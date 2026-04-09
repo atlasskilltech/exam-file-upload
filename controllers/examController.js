@@ -310,16 +310,28 @@ exports.listSubmissions = async (req, res) => {
     );
 
     const [submissions] = await pool.execute(`
-      SELECT es.*, u.username AS student_name
+      SELECT es.*, u.username AS student_name, u.app_id AS student_app_id
       FROM exam_submissions es
       LEFT JOIN users u ON es.student_id = u.id
       WHERE es.exam_id = ?
       ORDER BY es.submitted_at DESC
     `, [examId]);
 
+    // Get assigned students and figure out who hasn't submitted
+    const [assigned] = await pool.execute(`
+      SELECT u.id, u.username, u.app_id
+      FROM exam_assigned_students eas
+      JOIN users u ON eas.student_id = u.id
+      WHERE eas.exam_id = ?
+      ORDER BY u.username
+    `, [examId]);
+
+    const submittedIds = new Set(submissions.map(s => s.student_id));
+    const notSubmitted = assigned.filter(a => !submittedIds.has(a.id));
+
     return res.json({
       success: true,
-      data: { exam: exams[0], slots, submissions }
+      data: { exam: exams[0], slots, submissions, assigned_count: assigned.length, not_submitted: notSubmitted }
     });
   } catch (err) {
     console.error('List submissions error:', err);
