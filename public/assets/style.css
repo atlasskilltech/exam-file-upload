@@ -658,6 +658,165 @@ tbody tr:hover {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .toolbar { flex-direction: column; }
   .charts-grid { grid-template-columns: 1fr; }
+
+  /* ── Modal responsive (tablet) ────────────────────────── */
+  .modal-overlay {
+    padding: 16px;
+    align-items: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: auto;
+    max-height: none;
+    padding: 20px;
+  }
+
+  .modal h3 {
+    font-size: 16px;
+  }
+
+  .modal-actions {
+    flex-wrap: wrap;
+  }
+
+  .modal-actions .btn {
+    flex: 1;
+    min-width: 100px;
+    justify-content: center;
+  }
+
+  /* Slot rows stack on mobile */
+  .slot-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Checkbox list shorter on mobile */
+  .checkbox-list {
+    max-height: 180px;
+  }
+
+  /* Upload zone compact on mobile */
+  .upload-zone {
+    padding: 20px !important;
+  }
+
+  .upload-area {
+    padding: 24px;
+  }
+
+  /* Paper items stack on narrow screens */
+  .paper-item {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .paper-item .name {
+    min-width: 100%;
+  }
+
+  /* Assign student items */
+  .assign-student-item {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Toast centered on mobile */
+  .toast-container {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .toast {
+    min-width: auto;
+    width: 100%;
+  }
+
+  /* Table action buttons wrap */
+  td[style*="white-space:nowrap"],
+  td[style*="white-space: nowrap"] {
+    white-space: normal !important;
+  }
+}
+
+/* ── Modal responsive (small phones) ──────────────────────── */
+@media (max-width: 480px) {
+  .main-content { padding: 12px; }
+  .stats-grid { grid-template-columns: 1fr; }
+
+  .modal-overlay {
+    padding: 8px;
+  }
+
+  .modal {
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .modal h3 {
+    font-size: 15px;
+    margin-bottom: 10px;
+  }
+
+  .modal p {
+    font-size: 12px;
+    margin-bottom: 14px;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .form-control {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .slot-row {
+    padding: 10px !important;
+    gap: 6px !important;
+  }
+
+  .checkbox-list {
+    max-height: 150px;
+  }
+
+  .upload-zone {
+    padding: 16px !important;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  .exam-stat, .student-stat {
+    padding: 12px 16px;
+    min-width: 80px;
+  }
+
+  .exam-stat .val, .student-stat .val {
+    font-size: 22px;
+  }
 }
 
 /* ── Empty state ───────────────────────────────────────────── */
