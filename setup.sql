@@ -146,5 +146,8 @@ CREATE INDEX IF NOT EXISTS idx_exams_status ON exams(status);
 INSERT INTO users (username, password, app_id, role) VALUES
   ('admin', '$2a$10$oLdXBvIP4ZsnNDMArFcLyO1RD0q9eu1ITezMl52FW5UVZ5h3W7acS', NULL, 'admin'),
   ('Student One', NULL, 'STU001', 'student'),
-  ('Student Two', NULL, 'STU002', 'student')
+  ('Student Two', NULL, 'STU002', 'student'),
+  ('asha.uchil@atlasuniversity.edu.in', '$2a$10$.ziXZawLY2RvobYoychzieFVsGbXvMNbLmk4uM/wX7xw3VULCU1Q.', NULL, 'admin'),
+  ('dhanashree.mane@atlasuniversity.edu.in', '$2a$10$.ziXZawLY2RvobYoychzieFVsGbXvMNbLmk4uM/wX7xw3VULCU1Q.', NULL, 'admin'),
+  ('hemal.thakker@atlasuniversity.edu.in', '$2a$10$.ziXZawLY2RvobYoychzieFVsGbXvMNbLmk4uM/wX7xw3VULCU1Q.', NULL, 'admin')
 ON DUPLICATE KEY UPDATE username = username;
