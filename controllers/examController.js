@@ -320,7 +320,7 @@ exports.listSubmissions = async (req, res) => {
     // Get assigned students and figure out who hasn't submitted
     const [assigned] = await pool.execute(`
       SELECT u.id, u.username, u.app_id
-      FROM exam_assigned_students eas
+      FROM exam_students eas
       JOIN users u ON eas.student_id = u.id
       WHERE eas.exam_id = ?
       ORDER BY u.username
