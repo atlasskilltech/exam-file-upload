@@ -76,20 +76,24 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
-    // Find every assigned exam currently in a live slot, then check the PIN
-    // against each one. We don't tell the student which exam matched — only
-    // that the credentials are valid — to avoid leaking assignment info.
-    const [activeExams] = await pool.execute(`
+    // Match the PIN against every active exam this student is assigned to —
+    // not just the ones in a live time slot, so logins work just before /
+    // after the scheduled window. The slot-time check still gates actual
+    // submissions in submitAnswer. We don't tell the student which exam
+    // matched, to avoid leaking assignment info.
+    const [assignedExams] = await pool.execute(`
       SELECT DISTINCT e.id, e.pin_secret
       FROM exams e
       INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
-      INNER JOIN exam_slots s ON s.exam_id = e.id
       WHERE e.status = 'active'
-        AND CONCAT(s.slot_date, ' ', s.start_time) <= NOW()
-        AND CONCAT(s.slot_date, ' ', s.end_time)   >  NOW()
+        AND e.pin_secret IS NOT NULL
     `, [user.id]);
 
-    const matched = activeExams.find(e => pinService.verifyPin(e.pin_secret, pin));
+    if (assignedExams.length === 0) {
+      return res.status(401).json({ success: false, message: 'No active exam assigned to your App ID' });
+    }
+
+    const matched = assignedExams.find(e => pinService.verifyPin(e.pin_secret, pin));
     if (!matched) {
       return res.status(401).json({ success: false, message: 'Invalid or expired PIN' });
     }
