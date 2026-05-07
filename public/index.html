@@ -50,10 +50,14 @@
       <div class="login-panel" id="studentPanel">
         <form id="studentLoginForm">
           <div class="form-group">
-            <label>Enter Your App ID</label>
+            <label>App ID</label>
             <input type="text" class="form-control appid-input" id="appId" placeholder="STU001" autocomplete="off" required>
           </div>
-          <p class="appid-hint">Enter the App ID provided by your admin</p>
+          <div class="form-group">
+            <label>Exam PIN</label>
+            <input type="text" class="form-control appid-input" id="examPin" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6-digit PIN" autocomplete="off" required>
+          </div>
+          <p class="appid-hint">PIN is shown on the exam screen and rotates every 10 minutes</p>
           <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:16px" id="studentLoginBtn">
             Login
           </button>
@@ -133,7 +137,8 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            app_id: document.getElementById('appId').value.trim()
+            app_id: document.getElementById('appId').value.trim(),
+            pin: document.getElementById('examPin').value.trim()
           })
         });
         const data = await res.json();

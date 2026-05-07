@@ -13,6 +13,7 @@ router.post('/create', requireAdmin, ctrl.createExam);
 router.put('/update/:id', requireAdmin, ctrl.updateExam);
 router.delete('/delete/:id', requireAdmin, ctrl.deleteExam);
 router.post('/:id/status', requireAdmin, ctrl.changeStatus);
+router.get('/:id/current-pin', requireAdmin, ctrl.getCurrentPin);
 
 // Slot management
 router.get('/:id/slots', requireAdmin, ctrl.getSlots);

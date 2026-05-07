@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 const archiver = require('archiver');
+const pinService = require('../services/pinService');
 
 const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
 const PAPERS_BASE = path.join(__dirname, '..', 'uploads', 'exam_papers');
@@ -111,8 +112,8 @@ exports.createExam = async (req, res) => {
     }
 
     const [result] = await pool.execute(
-      'INSERT INTO exams (title, subject, created_by) VALUES (?, ?, ?)',
-      [title.trim(), subject.trim(), user.id]
+      'INSERT INTO exams (title, subject, pin_secret, created_by) VALUES (?, ?, ?, ?)',
+      [title.trim(), subject.trim(), pinService.generateSecret(), user.id]
     );
 
     const examId = result.insertId;
@@ -240,6 +241,38 @@ exports.changeStatus = async (req, res) => {
   } catch (err) {
     console.error('Change status error:', err);
     return res.status(500).json({ success: false, message: 'Failed to change status' });
+  }
+};
+
+// GET /exams/:id/current-pin — admin views the live exam PIN.
+// Lazily backfills pin_secret for exams created before the feature shipped.
+exports.getCurrentPin = async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const [rows] = await pool.execute('SELECT id, pin_secret FROM exams WHERE id = ?', [examId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    let secret = rows[0].pin_secret;
+    if (!secret) {
+      secret = pinService.generateSecret();
+      await pool.execute('UPDATE exams SET pin_secret = ? WHERE id = ?', [secret, examId]);
+    }
+
+    const { pin, expiresAt, secondsRemaining } = pinService.currentPin(secret);
+    return res.json({
+      success: true,
+      data: {
+        pin,
+        expires_at: new Date(expiresAt).toISOString(),
+        seconds_remaining: secondsRemaining,
+        window_seconds: pinService.PIN_WINDOW_MS / 1000
+      }
+    });
+  } catch (err) {
+    console.error('Get current pin error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to get exam PIN' });
   }
 };
 
