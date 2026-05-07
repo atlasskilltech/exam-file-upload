@@ -76,42 +76,43 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
-    // Read-only match against every assigned exam. Login MUST NOT rotate
-    // the PIN — that's the admin endpoint's job. We return distinct messages
-    // for the three failure cases so admins can debug assignment issues
-    // without resorting to SQL.
+    // The PIN itself is the per-exam access credential the admin distributes,
+    // so we match purely on PIN against any active exam — no pre-assignment
+    // required. On a successful match we auto-attach the student to that
+    // exam so it appears on their dashboard. Read-only on current_pin: we
+    // never rotate during login (that's the admin endpoint's job).
     const candidate = String(pin).trim();
-    const [assignments] = await pool.execute(`
-      SELECT e.id, e.title, e.status, e.current_pin, e.pin_generated_at
-      FROM exams e
-      INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
-    `, [user.id]);
+    const [matches] = await pool.execute(`
+      SELECT id, title, current_pin
+      FROM exams
+      WHERE status = 'active'
+        AND current_pin = ?
+      LIMIT 1
+    `, [candidate]);
 
-    console.log(`[student-login] app_id=${user.app_id} typed_pin=${candidate} ` +
-      `assignments=${assignments.length} ` +
-      `details=${JSON.stringify(assignments.map(a => ({
-        id: a.id, status: a.status, current_pin: a.current_pin
-      })))}`);
+    if (matches.length === 0) {
+      const [diag] = await pool.execute(
+        "SELECT id, title, status, current_pin FROM exams WHERE status = 'active'"
+      );
+      console.log(`[student-login] no PIN match. app_id=${user.app_id} typed=${candidate} active_exams=${JSON.stringify(diag)}`);
 
-    if (assignments.length === 0) {
-      return res.status(401).json({ success: false,
-        message: 'Your App ID is not assigned to any exam. Contact your admin.' });
+      const anyPin = diag.some(e => e.current_pin);
+      return res.status(401).json({
+        success: false,
+        message: anyPin
+          ? 'PIN does not match any active exam. It may have just rotated — ask admin to reshow it.'
+          : 'No exam PIN has been generated yet. Ask admin to open the PIN modal.'
+      });
     }
 
-    const active = assignments.filter(a => a.status === 'active');
-    if (active.length === 0) {
-      return res.status(401).json({ success: false,
-        message: 'All exams assigned to you are closed.' });
-    }
+    const matched = matches[0];
 
-    const matched = active.find(a => a.current_pin === candidate);
-    if (!matched) {
-      const hasPin = active.some(a => a.current_pin);
-      return res.status(401).json({ success: false,
-        message: hasPin
-          ? 'PIN does not match. It may have just rotated — ask admin to reshow it.'
-          : 'Exam PIN has not been generated yet. Ask admin to open the PIN modal.' });
-    }
+    // Auto-assign if not already assigned. INSERT IGNORE relies on the
+    // unique key (exam_id, student_id) defined in setup.sql.
+    await pool.execute(
+      'INSERT IGNORE INTO exam_students (exam_id, student_id) VALUES (?, ?)',
+      [matched.id, user.id]
+    );
 
     req.session.user = {
       id: user.id,
