@@ -68,12 +68,14 @@
                 <th>Subject</th>
                 <th>Slots</th>
                 <th>Status</th>
-                <th>Submissions</th>
+                <th>Allocated</th>
+                <th>Submitted</th>
+                <th>Pending</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="examsTable">
-              <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+              <tr><td colspan="9" class="empty-state">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -265,12 +267,16 @@
         `;
 
         if (exams.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No exams yet. Create one to get started.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No exams yet. Create one to get started.</td></tr>';
         } else {
           tbody.innerHTML = exams.map((e, i) => {
             const slotTags = (e.slots || []).map(s =>
               `<span class="slot-tag"><span class="room">${esc(s.room)}</span> ${fmtDate(s.slot_date)} ${fmtTime(s.start_time)}–${fmtTime(s.end_time)}</span>`
             ).join('');
+
+            const allocated = e.allocated_count || 0;
+            const submitted = e.submission_count || 0;
+            const pending = e.pending_count != null ? e.pending_count : Math.max(0, allocated - submitted);
 
             return `<tr>
               <td>${i + 1}</td>
@@ -278,7 +284,9 @@
               <td>${esc(e.subject)}</td>
               <td>${slotTags || '<span style="color:var(--text-muted)">No slots</span>'}</td>
               <td><span class="status-${e.status}">${e.status}</span></td>
-              <td>${e.submission_count || 0}</td>
+              <td><span style="color:var(--cyan)">${allocated}</span></td>
+              <td><span style="color:var(--green)">${submitted}</span></td>
+              <td><span style="color:${pending > 0 ? 'var(--red)' : 'var(--text-muted)'}">${pending}</span></td>
               <td style="white-space:normal">
                 <div style="display:flex;flex-wrap:wrap;gap:4px">
                 <button class="btn btn-secondary btn-sm" onclick="openSlotsModal(${e.id}, '${escAttr(e.title)}')">Slots</button>
