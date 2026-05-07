@@ -177,15 +177,51 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-// GET /admin/logs
+// GET /admin/logs?page=1&per_page=25&user=...&action=...
 exports.getLogs = async (req, res) => {
   try {
-    const [rows] = await pool.execute(
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const perPage = Math.min(100, Math.max(10, parseInt(req.query.per_page, 10) || 25));
+    const offset = (page - 1) * perPage;
+
+    const filters = [];
+    const params = [];
+    if (req.query.user) {
+      filters.push('u.username LIKE ?');
+      params.push(`%${req.query.user}%`);
+    }
+    if (req.query.action) {
+      filters.push('al.action LIKE ?');
+      params.push(`%${req.query.action}%`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM activity_log al
+       LEFT JOIN users u ON al.user_id = u.id
+       ${where}`,
+      params
+    );
+
+    const [rows] = await pool.query(
       `SELECT al.*, u.username FROM activity_log al
        LEFT JOIN users u ON al.user_id = u.id
-       ORDER BY al.created_at DESC LIMIT 200`
+       ${where}
+       ORDER BY al.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, perPage, offset]
     );
-    return res.json({ success: true, data: rows });
+
+    return res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page,
+        per_page: perPage,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / perPage))
+      }
+    });
   } catch (err) {
     console.error('Get logs error:', err);
     return res.status(500).json({ success: false, message: 'Failed to fetch logs' });

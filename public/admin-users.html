@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS Exam — All Users</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .filters .form-control { max-width: 260px; }
+    .pagination { display: flex; gap: 8px; justify-content: center; align-items: center; padding: 14px 0 4px; flex-wrap: wrap; }
+    .pagination button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination .page-info { color: var(--text-muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+        <div>
+          <a href="/admin.html" style="font-size:12px;color:var(--text-muted);text-decoration:none">&larr; Admin Panel</a>
+          <h1>All Users</h1>
+          <p>Search, filter and remove user accounts.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <a href="/admin-add-user.html" class="btn btn-primary btn-sm">+ Add User</a>
+          <a href="/admin-bulk-upload.html" class="btn btn-secondary btn-sm">Bulk Upload</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="filters">
+          <input type="text" class="form-control" id="searchInput" placeholder="Search name or App ID..." oninput="applyFilters()">
+          <select class="form-control" id="roleFilter" onchange="applyFilters()" style="max-width:160px">
+            <option value="">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="user">User</option>
+            <option value="student">Student</option>
+          </select>
+          <select class="form-control" id="perPageSelect" onchange="changePerPage()" style="max-width:130px">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <span style="color:var(--text-muted);font-size:13px;margin-left:auto" id="userCount"></span>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>App ID</th>
+                <th>Role</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable">
+              <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let currentUser;
+    let allUsers = [];
+    let filtered = [];
+    let currentPage = 1;
+    let perPage = 25;
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+      currentUser = user;
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+      loadUsers();
+    })();
+
+    async function loadUsers() {
+      try {
+        const res = await apiFetch('/admin/users');
+        allUsers = res.data || [];
+        applyFilters();
+      } catch {
+        showToast('Failed to load users', 'error');
+      }
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('searchInput').value.trim().toLowerCase();
+      const role = document.getElementById('roleFilter').value;
+      filtered = allUsers.filter(u => {
+        if (role && u.role !== role) return false;
+        if (search) {
+          const haystack = `${u.username || ''} ${u.app_id || ''}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        return true;
+      });
+      currentPage = 1;
+      render();
+    }
+
+    function changePerPage() {
+      perPage = parseInt(document.getElementById('perPageSelect').value, 10);
+      currentPage = 1;
+      render();
+    }
+
+    function render() {
+      const tbody = document.getElementById('usersTable');
+      const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * perPage;
+      const slice = filtered.slice(start, start + perPage);
+
+      document.getElementById('userCount').textContent =
+        `${filtered.length} user${filtered.length === 1 ? '' : 's'}` +
+        (filtered.length !== allUsers.length ? ` (of ${allUsers.length})` : '');
+
+      if (slice.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No users match these filters</td></tr>';
+      } else {
+        tbody.innerHTML = slice.map(u => `
+          <tr>
+            <td>${u.id}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td>${u.app_id ? '<code style="color:var(--cyan)">' + escapeHtml(u.app_id) + '</code>' : '—'}</td>
+            <td><span class="badge badge-${u.role}">${u.role}</span></td>
+            <td>${formatDate(u.created_at)}</td>
+            <td>
+              ${u.id === currentUser.id
+                ? '<span style="color:var(--text-muted);font-size:12px">Current user</span>'
+                : `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escapeAttr(u.username)}')">Delete</button>`
+              }
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      const el = document.getElementById('pagination');
+      if (totalPages <= 1) { el.innerHTML = ''; return; }
+      el.innerHTML = `
+        <button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(1)">&laquo; First</button>
+        <button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">Prev</button>
+        <span class="page-info">Page ${currentPage} of ${totalPages}</span>
+        <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next</button>
+        <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${totalPages})">Last &raquo;</button>
+      `;
+    }
+
+    function goPage(p) {
+      currentPage = p;
+      render();
+    }
+
+    async function deleteUser(id, username) {
+      const confirmed = await showConfirm(`Delete user "${username}"? This cannot be undone.`);
+      if (!confirmed) return;
+      try {
+        await apiFetch(`/admin/users/${id}`, { method: 'DELETE' });
+        showToast('User deleted');
+        loadUsers();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+    function escapeAttr(str) {
+      return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

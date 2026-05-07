@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS Exam — Bulk Upload Students</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .upload-csv-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 36px; text-align: center; cursor: pointer; transition: border-color 0.2s; margin-bottom: 12px; }
+    .upload-csv-area:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .upload-result { margin-top: 12px; font-size: 13px; }
+    .upload-result .ok { color: var(--green); }
+    .upload-result .skip { color: var(--red); }
+    .upload-errors { margin-top: 8px; font-size: 12px; color: var(--text-muted); max-height: 180px; overflow-y: auto; padding: 8px; background: var(--surface-2); border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <a href="/admin.html" style="font-size:12px;color:var(--text-muted);text-decoration:none">&larr; Admin Panel</a>
+        <h1>Bulk Upload Students (CSV)</h1>
+        <p>Import many student accounts in one go. Duplicate App IDs are skipped automatically.</p>
+      </div>
+
+      <div class="card" style="max-width:680px">
+        <div class="card-header">CSV Upload</div>
+        <p style="color:var(--text-muted);font-size:12px;margin-bottom:14px">
+          Format: <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px;color:var(--cyan)">name,app_id</code> &mdash; one student per line. The first line may be a header row and will be detected automatically.
+        </p>
+        <div class="upload-csv-area" id="csvArea" onclick="document.getElementById('csvFile').click()">
+          <div style="color:var(--text-muted);font-size:14px">Click to select a CSV file</div>
+          <input type="file" id="csvFile" accept=".csv,.txt" style="display:none">
+        </div>
+        <div id="csvFileName" style="font-size:13px;color:var(--accent);margin-bottom:8px"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="csvUploadBtn" disabled onclick="uploadCSV()">Upload Students</button>
+          <a href="/admin-users.html" class="btn btn-secondary">View All Users</a>
+        </div>
+        <div class="upload-result" id="csvResult"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let selectedCSV = null;
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+    })();
+
+    document.getElementById('csvFile').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        selectedCSV = e.target.files[0];
+        document.getElementById('csvFileName').textContent = selectedCSV.name;
+        document.getElementById('csvUploadBtn').disabled = false;
+      }
+    });
+
+    async function uploadCSV() {
+      if (!selectedCSV) return;
+      const btn = document.getElementById('csvUploadBtn');
+      btn.disabled = true;
+      btn.textContent = 'Uploading...';
+      document.getElementById('csvResult').innerHTML = '';
+
+      const formData = new FormData();
+      formData.append('csv_file', selectedCSV);
+
+      try {
+        const res = await fetch('/admin/users/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.success) {
+          const d = data.data;
+          let html = `<span class="ok">${d.added} students added</span>`;
+          if (d.skipped > 0) html += ` &nbsp;|&nbsp; <span class="skip">${d.skipped} skipped</span>`;
+          if (d.errors && d.errors.length > 0) {
+            html += `<div class="upload-errors">${d.errors.map(e => `<div>${escapeHtml(e)}</div>`).join('')}</div>`;
+          }
+          document.getElementById('csvResult').innerHTML = html;
+          showToast(`${d.added} students added`);
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch {
+        showToast('Upload failed', 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Upload Students';
+      selectedCSV = null;
+      document.getElementById('csvFile').value = '';
+      document.getElementById('csvFileName').textContent = '';
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
