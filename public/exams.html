@@ -172,6 +172,7 @@
         <!-- Left: Assigned students -->
         <div class="assign-col">
           <div class="assign-col-header">Assigned Students</div>
+          <input type="text" class="form-control" id="assignedSearchInput" placeholder="Search assigned..." style="margin-bottom:8px" oninput="filterAssignedStudents()">
           <div class="assigned-list-scroll" id="assignedStudentsList"></div>
         </div>
         <!-- Right: Add students + CSV -->
@@ -614,27 +615,57 @@
       document.getElementById('assignModal').classList.remove('active');
     }
 
+    let assignedStudentsCache = [];
+
     async function refreshAssignedStudents(examId) {
       try {
         const res = await apiFetch(`/exams/${examId}/assigned-students`);
-        const container = document.getElementById('assignedStudentsList');
-        if (res.data.length === 0) {
-          container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No students assigned yet.</p>';
-        } else {
-          container.innerHTML = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${res.data.length} student(s) assigned</p>` +
-            res.data.map(s => `
-              <div class="assign-student-item">
-                <div class="info">
-                  <strong>${esc(s.username)}</strong>
-                  <span class="app-id">${esc(s.app_id || '')}</span>
-                </div>
-                <button class="btn btn-danger btn-sm" onclick="unassignStudent(${s.student_id})">Remove</button>
-              </div>
-            `).join('');
-        }
+        assignedStudentsCache = res.data || [];
+        document.getElementById('assignedSearchInput').value = '';
+        renderAssignedStudents();
       } catch {
+        assignedStudentsCache = [];
         document.getElementById('assignedStudentsList').innerHTML = '<p style="color:var(--red)">Failed to load</p>';
       }
+    }
+
+    function filterAssignedStudents() {
+      renderAssignedStudents();
+    }
+
+    function renderAssignedStudents() {
+      const container = document.getElementById('assignedStudentsList');
+      const total = assignedStudentsCache.length;
+      const q = (document.getElementById('assignedSearchInput').value || '').trim().toLowerCase();
+      const filtered = q
+        ? assignedStudentsCache.filter(s =>
+            (s.username || '').toLowerCase().includes(q) ||
+            (s.app_id || '').toLowerCase().includes(q))
+        : assignedStudentsCache;
+
+      if (total === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No students assigned yet.</p>';
+        return;
+      }
+
+      const countLabel = q
+        ? `${filtered.length} of ${total} student(s) match`
+        : `${total} student(s) assigned`;
+
+      const rows = filtered.length === 0
+        ? '<p style="color:var(--text-muted);font-size:13px">No matches.</p>'
+        : filtered.map(s => `
+            <div class="assign-student-item">
+              <div class="info">
+                <strong>${esc(s.username)}</strong>
+                <span class="app-id">${esc(s.app_id || '')}</span>
+              </div>
+              <button class="btn btn-danger btn-sm" onclick="unassignStudent(${s.student_id})">Remove</button>
+            </div>
+          `).join('');
+
+      container.innerHTML =
+        `<p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${countLabel}</p>` + rows;
     }
 
     async function loadAllStudentsForCheckbox(examId) {
