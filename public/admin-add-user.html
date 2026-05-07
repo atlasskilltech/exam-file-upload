@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS Exam — Add User</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <a href="/admin.html" style="font-size:12px;color:var(--text-muted);text-decoration:none">&larr; Admin Panel</a>
+        <h1>Add User / Student</h1>
+        <p>Create a single account. Students log in with App ID + the rotating exam PIN; admins and users log in with username + password.</p>
+      </div>
+
+      <div class="card" style="max-width:560px">
+        <div class="card-header">New Account</div>
+        <form id="addUserForm">
+          <div class="form-group">
+            <label>Role</label>
+            <select class="form-control" id="newRole" onchange="toggleRoleFields()">
+              <option value="student">Student</option>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" class="form-control" id="newUsername" required>
+          </div>
+          <div class="form-group" id="passwordGroup">
+            <label>Password</label>
+            <input type="password" class="form-control" id="newPassword">
+          </div>
+          <div class="form-group" id="appIdGroup" style="display:none">
+            <label>App ID</label>
+            <input type="text" class="form-control" id="newAppId" placeholder="e.g. STU001">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button type="submit" class="btn btn-primary">Add User</button>
+            <a href="/admin-users.html" class="btn btn-secondary">View All Users</a>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+      toggleRoleFields();
+    })();
+
+    function toggleRoleFields() {
+      const role = document.getElementById('newRole').value;
+      document.getElementById('passwordGroup').style.display = role === 'student' ? 'none' : 'block';
+      document.getElementById('appIdGroup').style.display = role === 'student' ? 'block' : 'none';
+    }
+
+    document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value;
+      const role = document.getElementById('newRole').value;
+      const app_id = document.getElementById('newAppId').value.trim();
+
+      if (!username) return;
+      if (role === 'student' && !app_id) { showToast('App ID is required for students', 'error'); return; }
+      if (role !== 'student' && !password) { showToast('Password is required', 'error'); return; }
+
+      try {
+        await apiFetch('/admin/users/add', {
+          method: 'POST',
+          body: JSON.stringify({
+            username,
+            password: role === 'student' ? null : password,
+            role,
+            app_id: role === 'student' ? app_id : null
+          })
+        });
+        showToast('User added');
+        document.getElementById('addUserForm').reset();
+        toggleRoleFields();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  </script>
+</body>
+</html>

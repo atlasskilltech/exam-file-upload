@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS Exam — Activity Log</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <style>
+    .filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .filters .form-control { max-width: 240px; }
+    .pagination { display: flex; gap: 8px; justify-content: center; align-items: center; padding: 14px 0 4px; flex-wrap: wrap; }
+    .pagination button { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination .page-info { color: var(--text-muted); font-size: 13px; }
+    .ip-cell { font-family: monospace; font-size: 12px; color: var(--cyan); }
+    .ua-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout" id="app">
+    <main class="main-content">
+      <div class="page-header">
+        <a href="/admin.html" style="font-size:12px;color:var(--text-muted);text-decoration:none">&larr; Admin Panel</a>
+        <h1>Activity Log</h1>
+        <p>Every login, view and download &mdash; with IP and device info.</p>
+      </div>
+
+      <div class="card" style="position:relative">
+        <div class="loading-overlay" id="loadingOverlay"><div class="spinner"></div></div>
+        <div class="filters">
+          <input type="text" class="form-control" id="userFilter" placeholder="Filter by user..." oninput="debouncedReload()">
+          <input type="text" class="form-control" id="actionFilter" placeholder="Filter by action..." oninput="debouncedReload()">
+          <select class="form-control" id="perPageSelect" onchange="changePerPage()" style="max-width:130px">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="reload()">Refresh</button>
+          <span style="color:var(--text-muted);font-size:13px;margin-left:auto" id="logCount"></span>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>IP</th>
+                <th>Device</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody id="logsTable">
+              <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/assets/app.js"></script>
+  <script>
+    let currentPage = 1;
+    let perPage = 25;
+    let totalPages = 1;
+    let debounceTimer = null;
+
+    (async () => {
+      const user = await checkAuth();
+      if (!user) return;
+      if (user.role !== 'admin') { window.location.href = '/dashboard.html'; return; }
+      document.getElementById('app').insertAdjacentHTML('afterbegin', getSidebarHTML());
+      initSidebar(user);
+      reload();
+    })();
+
+    function debouncedReload() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => { currentPage = 1; reload(); }, 250);
+    }
+
+    function changePerPage() {
+      perPage = parseInt(document.getElementById('perPageSelect').value, 10);
+      currentPage = 1;
+      reload();
+    }
+
+    async function reload() {
+      const overlay = document.getElementById('loadingOverlay');
+      overlay.classList.add('active');
+      try {
+        const params = new URLSearchParams({ page: currentPage, per_page: perPage });
+        const userVal = document.getElementById('userFilter').value.trim();
+        const actionVal = document.getElementById('actionFilter').value.trim();
+        if (userVal) params.set('user', userVal);
+        if (actionVal) params.set('action', actionVal);
+
+        const res = await apiFetch(`/admin/logs?${params}`);
+        const tbody = document.getElementById('logsTable');
+        const p = res.pagination || { page: 1, per_page: perPage, total: res.data.length, total_pages: 1 };
+        totalPages = p.total_pages;
+        currentPage = p.page;
+
+        document.getElementById('logCount').textContent = `${p.total} entr${p.total === 1 ? 'y' : 'ies'}`;
+
+        if (res.data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No activity</td></tr>';
+        } else {
+          tbody.innerHTML = res.data.map(l => `
+            <tr>
+              <td>${escapeHtml(l.username || 'Unknown')}</td>
+              <td>${escapeHtml(l.action || '')}</td>
+              <td>${escapeHtml(l.target || '—')}</td>
+              <td class="ip-cell">${escapeHtml(l.ip_address || '—')}</td>
+              <td class="ua-cell" title="${escapeHtml(l.user_agent || '')}">${escapeHtml(shortUA(l.user_agent))}</td>
+              <td>${formatDate(l.created_at)}</td>
+            </tr>
+          `).join('');
+        }
+
+        renderPagination();
+      } catch (err) {
+        showToast('Failed to load logs', 'error');
+      }
+      overlay.classList.remove('active');
+    }
+
+    function renderPagination() {
+      const el = document.getElementById('pagination');
+      if (totalPages <= 1) { el.innerHTML = ''; return; }
+      el.innerHTML = `
+        <button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(1)">&laquo; First</button>
+        <button ${currentPage <= 1 ? 'disabled' : ''} onclick="goPage(${currentPage - 1})">Prev</button>
+        <span class="page-info">Page ${currentPage} of ${totalPages}</span>
+        <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${currentPage + 1})">Next</button>
+        <button ${currentPage >= totalPages ? 'disabled' : ''} onclick="goPage(${totalPages})">Last &raquo;</button>
+      `;
+    }
+
+    function goPage(p) {
+      currentPage = p;
+      reload();
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+
+    function shortUA(ua) {
+      if (!ua) return '—';
+      let os = 'Unknown';
+      if (/Windows NT/i.test(ua)) os = 'Windows';
+      else if (/Android/i.test(ua)) os = 'Android';
+      else if (/iPhone|iPad|iOS/i.test(ua)) os = 'iOS';
+      else if (/Mac OS X/i.test(ua)) os = 'macOS';
+      else if (/Linux/i.test(ua)) os = 'Linux';
+      let br = 'Browser';
+      if (/Edg\//i.test(ua)) br = 'Edge';
+      else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) br = 'Chrome';
+      else if (/Firefox\//i.test(ua)) br = 'Firefox';
+      else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) br = 'Safari';
+      return `${os} · ${br}`;
+    }
+  </script>
+</body>
+</html>
