@@ -60,10 +60,19 @@ CREATE TABLE IF NOT EXISTS exams (
   title        VARCHAR(255) NOT NULL,
   subject      VARCHAR(150) NOT NULL,
   status       ENUM('active','closed') DEFAULT 'active',
+  pin_secret   VARCHAR(64) DEFAULT NULL,
   created_by   INT,
   created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Add pin_secret column to existing exams tables (idempotent)
+SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'pin_secret');
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE exams ADD COLUMN pin_secret VARCHAR(64) DEFAULT NULL AFTER status',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Exam slots — multiple time slots per exam (same room, different times)
 CREATE TABLE IF NOT EXISTS exam_slots (

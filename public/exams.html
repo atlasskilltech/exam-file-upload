@@ -200,6 +200,26 @@
     </div>
   </div>
 
+  <!-- Live Exam PIN Modal -->
+  <div class="modal-overlay" id="pinModal">
+    <div class="modal" style="max-width:420px;text-align:center">
+      <h3>Exam PIN — <span id="pinExamTitle"></span></h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-top:4px">
+        Share this PIN with students. It rotates every 10 minutes.
+      </p>
+      <div id="pinDisplay" style="font-family:var(--font-heading);font-weight:800;font-size:56px;letter-spacing:10px;color:var(--accent);margin:20px 0;padding:18px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)">
+        ------
+      </div>
+      <div id="pinCountdown" style="color:var(--text-muted);font-size:13px;margin-bottom:6px">
+        Loading…
+      </div>
+      <input type="hidden" id="pinExamId">
+      <div class="modal-actions" style="margin-top:16px;justify-content:center">
+        <button class="btn btn-secondary" onclick="closePinModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/assets/app.js"></script>
   <script>
     // Parse date/time from MySQL (may come as ISO or raw)
@@ -263,6 +283,7 @@
                 <button class="btn btn-secondary btn-sm" onclick="openSlotsModal(${e.id}, '${escAttr(e.title)}')">Slots</button>
                 <button class="btn btn-secondary btn-sm" onclick="openPapersModal(${e.id}, '${escAttr(e.title)}')">Papers</button>
                 <button class="btn btn-secondary btn-sm" onclick="openAssignModal(${e.id}, '${escAttr(e.title)}')">Students</button>
+                <button class="btn btn-secondary btn-sm" onclick="openPinModal(${e.id}, '${escAttr(e.title)}')">PIN</button>
                 <a href="/exam-submissions.html?id=${e.id}" class="btn btn-secondary btn-sm">View</a>
                 <button class="btn btn-secondary btn-sm" onclick="downloadZip(${e.id})" ${(e.submission_count || 0) === 0 ? 'disabled style="opacity:0.4;cursor:not-allowed"' : ''}>Download</button>
                 <button class="btn btn-secondary btn-sm" onclick="openEditModal(${e.id}, '${escAttr(e.title)}', '${escAttr(e.subject)}', ${JSON.stringify(e.slots || []).replace(/"/g, '&quot;')})">Edit</button>
@@ -741,6 +762,49 @@
     }
     function escAttr(str) {
       return (str || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    }
+
+    // ── Exam PIN Modal — live, rotates every 10 minutes ──────
+    let pinTickHandle = null;
+    let pinExpiresAt = 0;
+    let pinWindowSeconds = 600;
+
+    async function openPinModal(examId, title) {
+      document.getElementById('pinExamTitle').textContent = title;
+      document.getElementById('pinExamId').value = examId;
+      document.getElementById('pinDisplay').textContent = '------';
+      document.getElementById('pinCountdown').textContent = 'Loading…';
+      document.getElementById('pinModal').classList.add('active');
+      await fetchPin();
+      if (pinTickHandle) clearInterval(pinTickHandle);
+      pinTickHandle = setInterval(tickPin, 1000);
+    }
+
+    function closePinModal() {
+      document.getElementById('pinModal').classList.remove('active');
+      if (pinTickHandle) { clearInterval(pinTickHandle); pinTickHandle = null; }
+    }
+
+    async function fetchPin() {
+      const examId = document.getElementById('pinExamId').value;
+      if (!examId) return;
+      try {
+        const res = await apiFetch(`/exams/${examId}/current-pin`);
+        document.getElementById('pinDisplay').textContent = res.data.pin;
+        pinExpiresAt = new Date(res.data.expires_at).getTime();
+        pinWindowSeconds = res.data.window_seconds || 600;
+      } catch (err) {
+        document.getElementById('pinDisplay').textContent = 'ERROR';
+        document.getElementById('pinCountdown').textContent = err.message || 'Failed to load PIN';
+      }
+    }
+
+    function tickPin() {
+      const remaining = Math.max(0, Math.round((pinExpiresAt - Date.now()) / 1000));
+      const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+      const ss = String(remaining % 60).padStart(2, '0');
+      document.getElementById('pinCountdown').textContent = `Rotates in ${mm}:${ss}`;
+      if (remaining <= 0) fetchPin();
     }
   </script>
 </body>

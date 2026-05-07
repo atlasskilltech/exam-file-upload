@@ -1,6 +1,7 @@
 // Auth controller — login, logout, session check logic
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
+const pinService = require('../services/pinService');
 
 // POST /auth/login — admin/user login with username + password
 exports.login = async (req, res) => {
@@ -52,13 +53,18 @@ exports.login = async (req, res) => {
   }
 };
 
-// POST /auth/student-login — student login with app_id only
+// POST /auth/student-login — student login with app_id + rotating exam PIN.
+// PIN must match an exam the student is assigned to that is currently in a
+// live time slot. PIN rotates every 10 minutes (see services/pinService.js).
 exports.studentLogin = async (req, res) => {
   try {
-    const { app_id } = req.body;
+    const { app_id, pin } = req.body;
 
     if (!app_id) {
       return res.status(400).json({ success: false, message: 'App ID is required' });
+    }
+    if (!pin) {
+      return res.status(400).json({ success: false, message: 'Exam PIN is required' });
     }
 
     const [rows] = await pool.execute(
@@ -72,6 +78,24 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
+    // Find every assigned exam currently in a live slot, then check the PIN
+    // against each one. We don't tell the student which exam matched — only
+    // that the credentials are valid — to avoid leaking assignment info.
+    const [activeExams] = await pool.execute(`
+      SELECT DISTINCT e.id, e.pin_secret
+      FROM exams e
+      INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
+      INNER JOIN exam_slots s ON s.exam_id = e.id
+      WHERE e.status = 'active'
+        AND CONCAT(s.slot_date, ' ', s.start_time) <= NOW()
+        AND CONCAT(s.slot_date, ' ', s.end_time)   >  NOW()
+    `, [user.id]);
+
+    const matched = activeExams.find(e => pinService.verifyPin(e.pin_secret, pin));
+    if (!matched) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired PIN' });
+    }
+
     req.session.user = {
       id: user.id,
       username: user.username,
@@ -81,7 +105,7 @@ exports.studentLogin = async (req, res) => {
 
     await pool.execute(
       'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'logged in (app_id)', user.app_id]
+      [user.id, 'logged in (app_id+pin)', `${user.app_id} exam:${matched.id}`]
     );
 
     return res.json({ success: true, data: { username: user.username, app_id: user.app_id, role: user.role } });
