@@ -76,25 +76,42 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
-    // Match the typed PIN against every active assigned exam in a SINGLE
-    // read-only query. Login MUST NOT rotate the PIN — otherwise a stale
-    // current_pin would get replaced with a fresh random value before the
-    // comparison, and the student's typed PIN would never match. Rotation
-    // is the admin endpoint's job (services/pinService.js#getOrRotatePin).
+    // Read-only match against every assigned exam. Login MUST NOT rotate
+    // the PIN — that's the admin endpoint's job. We return distinct messages
+    // for the three failure cases so admins can debug assignment issues
+    // without resorting to SQL.
     const candidate = String(pin).trim();
-    const [matches] = await pool.execute(`
-      SELECT e.id
+    const [assignments] = await pool.execute(`
+      SELECT e.id, e.title, e.status, e.current_pin, e.pin_generated_at
       FROM exams e
       INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
-      WHERE e.status = 'active'
-        AND e.current_pin = ?
-      LIMIT 1
-    `, [user.id, candidate]);
+    `, [user.id]);
 
-    if (matches.length === 0) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired PIN' });
+    console.log(`[student-login] app_id=${user.app_id} typed_pin=${candidate} ` +
+      `assignments=${assignments.length} ` +
+      `details=${JSON.stringify(assignments.map(a => ({
+        id: a.id, status: a.status, current_pin: a.current_pin
+      })))}`);
+
+    if (assignments.length === 0) {
+      return res.status(401).json({ success: false,
+        message: 'Your App ID is not assigned to any exam. Contact your admin.' });
     }
-    const matched = matches[0];
+
+    const active = assignments.filter(a => a.status === 'active');
+    if (active.length === 0) {
+      return res.status(401).json({ success: false,
+        message: 'All exams assigned to you are closed.' });
+    }
+
+    const matched = active.find(a => a.current_pin === candidate);
+    if (!matched) {
+      const hasPin = active.some(a => a.current_pin);
+      return res.status(401).json({ success: false,
+        message: hasPin
+          ? 'PIN does not match. It may have just rotated — ask admin to reshow it.'
+          : 'Exam PIN has not been generated yet. Ask admin to open the PIN modal.' });
+    }
 
     req.session.user = {
       id: user.id,
