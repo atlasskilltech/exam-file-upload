@@ -2,6 +2,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const pinService = require('../services/pinService');
+const activityLog = require('../services/activityLog');
 
 // POST /auth/login — admin/user login with username + password
 exports.login = async (req, res) => {
@@ -41,10 +42,7 @@ exports.login = async (req, res) => {
       role: user.role
     };
 
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'logged in', user.username]
-    );
+    await activityLog.log(req, 'logged in', user.username, { userId: user.id });
 
     return res.json({ success: true, data: { username: user.username, role: user.role } });
   } catch (err) {
@@ -78,20 +76,24 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
-    // Find every assigned exam currently in a live slot, then check the PIN
-    // against each one. We don't tell the student which exam matched — only
-    // that the credentials are valid — to avoid leaking assignment info.
-    const [activeExams] = await pool.execute(`
+    // Match the PIN against every active exam this student is assigned to —
+    // not just the ones in a live time slot, so logins work just before /
+    // after the scheduled window. The slot-time check still gates actual
+    // submissions in submitAnswer. We don't tell the student which exam
+    // matched, to avoid leaking assignment info.
+    const [assignedExams] = await pool.execute(`
       SELECT DISTINCT e.id, e.pin_secret
       FROM exams e
       INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
-      INNER JOIN exam_slots s ON s.exam_id = e.id
       WHERE e.status = 'active'
-        AND CONCAT(s.slot_date, ' ', s.start_time) <= NOW()
-        AND CONCAT(s.slot_date, ' ', s.end_time)   >  NOW()
+        AND e.pin_secret IS NOT NULL
     `, [user.id]);
 
-    const matched = activeExams.find(e => pinService.verifyPin(e.pin_secret, pin));
+    if (assignedExams.length === 0) {
+      return res.status(401).json({ success: false, message: 'No active exam assigned to your App ID' });
+    }
+
+    const matched = assignedExams.find(e => pinService.verifyPin(e.pin_secret, pin));
     if (!matched) {
       return res.status(401).json({ success: false, message: 'Invalid or expired PIN' });
     }
@@ -103,10 +105,8 @@ exports.studentLogin = async (req, res) => {
       role: user.role
     };
 
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'logged in (app_id+pin)', `${user.app_id} exam:${matched.id}`]
-    );
+    await activityLog.log(req, 'logged in (app_id+pin)',
+      `${user.app_id} exam:${matched.id}`, { userId: user.id });
 
     return res.json({ success: true, data: { username: user.username, app_id: user.app_id, role: user.role } });
   } catch (err) {
@@ -116,7 +116,12 @@ exports.studentLogin = async (req, res) => {
 };
 
 // GET /auth/logout
-exports.logout = (req, res) => {
+exports.logout = async (req, res) => {
+  const user = req.session?.user;
+  if (user) {
+    await activityLog.log(req, 'logged out', user.username || user.app_id || null,
+      { userId: user.id });
+  }
   req.session.destroy(() => {
     res.json({ success: true, message: 'Logged out' });
   });

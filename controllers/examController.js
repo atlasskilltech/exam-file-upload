@@ -6,6 +6,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const archiver = require('archiver');
 const pinService = require('../services/pinService');
+const activityLog = require('../services/activityLog');
 
 const SUBMISSIONS_BASE = path.join(__dirname, '..', 'uploads', 'exam_submissions');
 const PAPERS_BASE = path.join(__dirname, '..', 'uploads', 'exam_papers');
@@ -261,6 +262,7 @@ exports.getCurrentPin = async (req, res) => {
     }
 
     const { pin, expiresAt, secondsRemaining } = pinService.currentPin(secret);
+    await activityLog.log(req, 'viewed exam PIN', `exam:${examId}`);
     return res.json({
       success: true,
       data: {
@@ -362,6 +364,9 @@ exports.listSubmissions = async (req, res) => {
     const submittedIds = new Set(submissions.map(s => s.student_id));
     const notSubmitted = assigned.filter(a => !submittedIds.has(a.id));
 
+    await activityLog.log(req, 'viewed submissions',
+      `${exams[0].title} (${submissions.length}/${assigned.length})`);
+
     return res.json({
       success: true,
       data: { exam: exams[0], slots, submissions, assigned_count: assigned.length, not_submitted: notSubmitted }
@@ -399,6 +404,9 @@ exports.downloadSubmission = async (req, res) => {
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: 'File not found on disk' });
     }
+
+    await activityLog.log(req, 'downloaded submission',
+      `${sub.exam_title} - ${sub.original_name}`);
 
     res.download(filePath, sub.original_name);
   } catch (err) {
@@ -438,6 +446,8 @@ exports.exportCSV = async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=exam_${examId}_submissions.csv`);
+    await activityLog.log(req, 'exported submissions CSV',
+      `${exams[0].title} (${rows.length} rows)`);
     return res.send(csv);
   } catch (err) {
     console.error('Export CSV error:', err);
@@ -487,6 +497,9 @@ exports.downloadAllSubmissionsZip = async (req, res) => {
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+    await activityLog.log(req, 'downloaded submissions ZIP',
+      `${exam.title} (${submissions.length} files)`);
 
     const archive = archiver('zip', { zlib: { level: 5 } });
     archive.on('error', (err) => {
@@ -949,6 +962,8 @@ exports.studentExamDetail = async (req, res) => {
       pool.execute('SELECT id, original_name, size_bytes FROM exam_question_papers WHERE exam_id = ? ORDER BY uploaded_at', [examId])
     ]);
 
+    await activityLog.log(req, 'viewed exam', `${exams[0].title}`);
+
     return res.json({
       success: true,
       data: { exam: exams[0], slots, submission: subs[0] || null, question_papers: papers }
@@ -1089,6 +1104,8 @@ exports.studentHistory = async (req, res) => {
       WHERE es.student_id = ?
       ORDER BY es.submitted_at DESC
     `, [userId]);
+
+    await activityLog.log(req, 'viewed submission history', `${rows.length} submissions`);
 
     return res.json({ success: true, data: rows });
   } catch (err) {
