@@ -73,21 +73,29 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Exams table (basic info only, scheduling in exam_slots)
 CREATE TABLE IF NOT EXISTS exams (
-  id           INT AUTO_INCREMENT PRIMARY KEY,
-  title        VARCHAR(255) NOT NULL,
-  subject      VARCHAR(150) NOT NULL,
-  status       ENUM('active','closed') DEFAULT 'active',
-  pin_secret   VARCHAR(64) DEFAULT NULL,
-  created_by   INT,
-  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  title            VARCHAR(255) NOT NULL,
+  subject          VARCHAR(150) NOT NULL,
+  status           ENUM('active','closed') DEFAULT 'active',
+  current_pin      VARCHAR(6) DEFAULT NULL,
+  pin_generated_at DATETIME DEFAULT NULL,
+  created_by       INT,
+  created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Add pin_secret column to existing exams tables (idempotent)
+-- Add current_pin / pin_generated_at columns to existing installs (idempotent)
 SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'pin_secret');
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'current_pin');
 SET @sql := IF(@col_exists = 0,
-  'ALTER TABLE exams ADD COLUMN pin_secret VARCHAR(64) DEFAULT NULL AFTER status',
+  'ALTER TABLE exams ADD COLUMN current_pin VARCHAR(6) DEFAULT NULL AFTER status',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'pin_generated_at');
+SET @sql := IF(@col_exists = 0,
+  'ALTER TABLE exams ADD COLUMN pin_generated_at DATETIME DEFAULT NULL AFTER current_pin',
   'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 

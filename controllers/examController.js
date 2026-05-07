@@ -113,8 +113,8 @@ exports.createExam = async (req, res) => {
     }
 
     const [result] = await pool.execute(
-      'INSERT INTO exams (title, subject, pin_secret, created_by) VALUES (?, ?, ?, ?)',
-      [title.trim(), subject.trim(), pinService.generateSecret(), user.id]
+      'INSERT INTO exams (title, subject, current_pin, pin_generated_at, created_by) VALUES (?, ?, ?, NOW(), ?)',
+      [title.trim(), subject.trim(), pinService.randomPin(), user.id]
     );
 
     const examId = result.insertId;
@@ -246,29 +246,24 @@ exports.changeStatus = async (req, res) => {
 };
 
 // GET /exams/:id/current-pin — admin views the live exam PIN.
-// Lazily backfills pin_secret for exams created before the feature shipped.
+// The PIN is stored in `exams.current_pin` and rotated by the server every
+// 10 minutes. Reading the PIN may also rotate it if the previous one is
+// stale, so the value returned here is always fresh.
 exports.getCurrentPin = async (req, res) => {
   try {
     const examId = req.params.id;
-    const [rows] = await pool.execute('SELECT id, pin_secret FROM exams WHERE id = ?', [examId]);
-    if (rows.length === 0) {
+    const result = await pinService.getOrRotatePin(examId);
+    if (!result) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
-    let secret = rows[0].pin_secret;
-    if (!secret) {
-      secret = pinService.generateSecret();
-      await pool.execute('UPDATE exams SET pin_secret = ? WHERE id = ?', [secret, examId]);
-    }
-
-    const { pin, expiresAt, secondsRemaining } = pinService.currentPin(secret);
     await activityLog.log(req, 'viewed exam PIN', `exam:${examId}`);
     return res.json({
       success: true,
       data: {
-        pin,
-        expires_at: new Date(expiresAt).toISOString(),
-        seconds_remaining: secondsRemaining,
+        pin: result.pin,
+        expires_at: new Date(result.expiresAt).toISOString(),
+        seconds_remaining: result.secondsRemaining,
         window_seconds: pinService.PIN_WINDOW_MS / 1000
       }
     });
