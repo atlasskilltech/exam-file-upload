@@ -68,7 +68,14 @@ exports.listExams = async (req, res) => {
     const [rows] = await pool.execute(`
       SELECT e.*, u.username AS created_by_name,
         (SELECT COUNT(*) FROM exam_submissions WHERE exam_id = e.id) AS submission_count,
-        (SELECT COUNT(*) FROM exam_slots WHERE exam_id = e.id) AS slot_count
+        (SELECT COUNT(*) FROM exam_slots WHERE exam_id = e.id) AS slot_count,
+        (SELECT COUNT(*) FROM exam_students WHERE exam_id = e.id) AS allocated_count,
+        (SELECT COUNT(*) FROM exam_students es
+           WHERE es.exam_id = e.id
+             AND NOT EXISTS (
+               SELECT 1 FROM exam_submissions sub
+               WHERE sub.exam_id = e.id AND sub.student_id = es.student_id
+             )) AS pending_count
       FROM exams e
       LEFT JOIN users u ON e.created_by = u.id
       ORDER BY e.created_at DESC
