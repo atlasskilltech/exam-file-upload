@@ -2,6 +2,7 @@
 const pool = require('../config/db');
 const path = require('path');
 const fs = require('fs');
+const activityLog = require('../services/activityLog');
 
 // GET /files — list files with search, filter, sort, pagination
 exports.listFiles = async (req, res) => {
@@ -164,11 +165,7 @@ exports.downloadFile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'File not found on disk' });
     }
 
-    // Log download
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'downloaded file', file.original_name]
-    );
+    await activityLog.log(req, 'downloaded file', file.original_name);
 
     res.download(filePath, file.original_name);
   } catch (err) {

@@ -33,6 +33,10 @@ function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  // Trust the first proxy hop so req.ip and X-Forwarded-For resolve to the
+  // real client when running behind nginx / a load balancer.
+  app.set('trust proxy', 1);
+
   // ── Gzip compression — reduces response sizes ~10x ──────────
   app.use(compression());
 

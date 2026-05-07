@@ -2,6 +2,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 const pinService = require('../services/pinService');
+const activityLog = require('../services/activityLog');
 
 // POST /auth/login — admin/user login with username + password
 exports.login = async (req, res) => {
@@ -41,10 +42,7 @@ exports.login = async (req, res) => {
       role: user.role
     };
 
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'logged in', user.username]
-    );
+    await activityLog.log(req, 'logged in', user.username, { userId: user.id });
 
     return res.json({ success: true, data: { username: user.username, role: user.role } });
   } catch (err) {
@@ -103,10 +101,8 @@ exports.studentLogin = async (req, res) => {
       role: user.role
     };
 
-    await pool.execute(
-      'INSERT INTO activity_log (user_id, action, target) VALUES (?, ?, ?)',
-      [user.id, 'logged in (app_id+pin)', `${user.app_id} exam:${matched.id}`]
-    );
+    await activityLog.log(req, 'logged in (app_id+pin)',
+      `${user.app_id} exam:${matched.id}`, { userId: user.id });
 
     return res.json({ success: true, data: { username: user.username, app_id: user.app_id, role: user.role } });
   } catch (err) {
@@ -116,7 +112,12 @@ exports.studentLogin = async (req, res) => {
 };
 
 // GET /auth/logout
-exports.logout = (req, res) => {
+exports.logout = async (req, res) => {
+  const user = req.session?.user;
+  if (user) {
+    await activityLog.log(req, 'logged out', user.username || user.app_id || null,
+      { userId: user.id });
+  }
   req.session.destroy(() => {
     res.json({ success: true, message: 'Logged out' });
   });

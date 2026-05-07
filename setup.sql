@@ -50,9 +50,26 @@ CREATE TABLE IF NOT EXISTS activity_log (
   user_id INT,
   action VARCHAR(255),
   target VARCHAR(255),
+  ip_address VARCHAR(64) DEFAULT NULL,
+  user_agent VARCHAR(255) DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Add ip_address / user_agent columns to existing activity_log (idempotent)
+SET @ip_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activity_log' AND COLUMN_NAME = 'ip_address');
+SET @sql := IF(@ip_exists = 0,
+  'ALTER TABLE activity_log ADD COLUMN ip_address VARCHAR(64) DEFAULT NULL AFTER target',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @ua_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'activity_log' AND COLUMN_NAME = 'user_agent');
+SET @sql := IF(@ua_exists = 0,
+  'ALTER TABLE activity_log ADD COLUMN user_agent VARCHAR(255) DEFAULT NULL AFTER ip_address',
+  'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Exams table (basic info only, scheduling in exam_slots)
 CREATE TABLE IF NOT EXISTS exams (
