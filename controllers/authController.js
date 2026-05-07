@@ -76,24 +76,30 @@ exports.studentLogin = async (req, res) => {
 
     const user = rows[0];
 
-    // Match the PIN against every active exam this student is assigned to —
-    // not just the ones in a live time slot, so logins work just before /
-    // after the scheduled window. The slot-time check still gates actual
-    // submissions in submitAnswer. We don't tell the student which exam
-    // matched, to avoid leaking assignment info.
+    // List every active exam the student is assigned to, then rotate-on-read
+    // each one so its current_pin reflects the freshest 10-min window before
+    // we compare. Plain string equality after that — no clock-bucket math, no
+    // skew between admin's machine and the server.
     const [assignedExams] = await pool.execute(`
-      SELECT DISTINCT e.id, e.pin_secret
+      SELECT DISTINCT e.id
       FROM exams e
       INNER JOIN exam_students es ON es.exam_id = e.id AND es.student_id = ?
       WHERE e.status = 'active'
-        AND e.pin_secret IS NOT NULL
     `, [user.id]);
 
     if (assignedExams.length === 0) {
       return res.status(401).json({ success: false, message: 'No active exam assigned to your App ID' });
     }
 
-    const matched = assignedExams.find(e => pinService.verifyPin(e.pin_secret, pin));
+    const candidate = String(pin).trim();
+    let matched = null;
+    for (const exam of assignedExams) {
+      const fresh = await pinService.getOrRotatePin(exam.id);
+      if (fresh && fresh.pin === candidate) {
+        matched = exam;
+        break;
+      }
+    }
     if (!matched) {
       return res.status(401).json({ success: false, message: 'Invalid or expired PIN' });
     }

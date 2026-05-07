@@ -1,51 +1,53 @@
-// Deterministic, time-rotating exam PIN generator.
-// PIN = first 6 digits of HMAC-SHA256(pin_secret, bucket-index), recomputed
-// each 10-minute window. Cluster workers all derive the same value with no
-// shared state, so no cron or DB write is needed to rotate.
+// Simple per-exam PIN: a 6-digit random number stored in the DB.
+// Rotation happens server-side every 10 minutes via an atomic UPDATE
+// guarded by a freshness check. Whatever value is in the row is the
+// only valid PIN — comparison at login is a plain string equality, so
+// clock skew between client and server cannot cause spurious failures.
 const crypto = require('crypto');
+const pool = require('../config/db');
 
 const PIN_WINDOW_MS = 10 * 60 * 1000;
 const PIN_LENGTH = 6;
 
-function getBucket(now = Date.now()) {
-  const index = Math.floor(now / PIN_WINDOW_MS);
-  const startsAt = index * PIN_WINDOW_MS;
-  const expiresAt = startsAt + PIN_WINDOW_MS;
-  return { index, startsAt, expiresAt, secondsRemaining: Math.ceil((expiresAt - now) / 1000) };
+function randomPin() {
+  // crypto.randomInt is unbiased over the full range, unlike Math.random.
+  return String(crypto.randomInt(0, 10 ** PIN_LENGTH)).padStart(PIN_LENGTH, '0');
 }
 
-function generateSecret() {
-  return crypto.randomBytes(24).toString('hex');
-}
+// Returns the current PIN for an exam, rotating it if older than the window.
+// The UPDATE is conditional, so concurrent workers serialize on the row lock
+// and only one of them actually rotates. Returns null if exam doesn't exist.
+async function getOrRotatePin(examId) {
+  const candidate = randomPin();
+  await pool.execute(
+    `UPDATE exams
+     SET current_pin = ?, pin_generated_at = NOW()
+     WHERE id = ?
+       AND (current_pin IS NULL
+            OR pin_generated_at IS NULL
+            OR pin_generated_at < NOW() - INTERVAL ? SECOND)`,
+    [candidate, examId, PIN_WINDOW_MS / 1000]
+  );
 
-function pinFromSecret(secret, bucketIndex) {
-  const mac = crypto.createHmac('sha256', String(secret)).update(String(bucketIndex)).digest();
-  // Use a 4-byte slice as an unsigned int, mod 10^PIN_LENGTH, zero-padded.
-  const num = mac.readUInt32BE(0) % (10 ** PIN_LENGTH);
-  return String(num).padStart(PIN_LENGTH, '0');
-}
+  const [rows] = await pool.execute(
+    'SELECT current_pin, pin_generated_at FROM exams WHERE id = ?',
+    [examId]
+  );
+  if (rows.length === 0) return null;
 
-function currentPin(secret, now = Date.now()) {
-  const bucket = getBucket(now);
-  return { pin: pinFromSecret(secret, bucket.index), ...bucket };
-}
-
-// Accept the current bucket's PIN, plus a small grace window so a student
-// who fetches the PIN at 9:59 can still log in at 10:00 without a hiccup.
-function verifyPin(secret, candidate, now = Date.now()) {
-  if (!secret || !candidate) return false;
-  const trimmed = String(candidate).trim();
-  if (!/^\d+$/.test(trimmed)) return false;
-  const current = getBucket(now);
-  const previous = current.index - 1;
-  return trimmed === pinFromSecret(secret, current.index) ||
-         trimmed === pinFromSecret(secret, previous);
+  const generatedAt = rows[0].pin_generated_at ? new Date(rows[0].pin_generated_at).getTime() : Date.now();
+  const expiresAt = generatedAt + PIN_WINDOW_MS;
+  return {
+    pin: rows[0].current_pin,
+    generatedAt,
+    expiresAt,
+    secondsRemaining: Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+  };
 }
 
 module.exports = {
   PIN_WINDOW_MS,
   PIN_LENGTH,
-  generateSecret,
-  currentPin,
-  verifyPin
+  randomPin,
+  getOrRotatePin
 };
